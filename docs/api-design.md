@@ -24,6 +24,16 @@ Error:
 }
 ```
 
+Authentication errors use the same format:
+
+```json
+{
+  "success": false,
+  "message": "Request failed.",
+  "detail": "Could not validate credentials."
+}
+```
+
 ## HTTP Status Codes
 
 - `200 OK`: request succeeded
@@ -78,9 +88,25 @@ List response data:
 
 ## Auth
 
+TutorFlow AI uses JWT access tokens. Passwords are stored as bcrypt hashes and are never returned by the API.
+
+JWT payload:
+
+- `sub`: authenticated user id
+- `email`: authenticated user email
+- `exp`: token expiration time
+
+Bearer token usage:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Swagger `/docs` exposes an `Authorize` button through FastAPI `OAuth2PasswordBearer`, so protected APIs can be tested without a frontend. The Swagger OAuth2 form uses the hidden token endpoint `/api/v1/auth/token`; application clients should use `/api/v1/auth/login`.
+
 ### POST `/auth/register`
 
-Create a teacher account.
+Create a teacher account. The backend checks duplicate email, hashes the password, stores the user, and returns a JWT access token with the created user.
 
 Request:
 
@@ -99,7 +125,7 @@ Response `201`:
   "success": true,
   "message": "User registered.",
   "data": {
-    "access_token": "contract-token",
+    "access_token": "<jwt-access-token>",
     "token_type": "bearer",
     "user": {
       "id": 1,
@@ -114,7 +140,7 @@ Response `201`:
 
 ### POST `/auth/login`
 
-Login with email and password.
+Login with email and password. Only valid credentials receive a JWT access token.
 
 Request:
 
@@ -125,15 +151,44 @@ Request:
 }
 ```
 
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "User logged in.",
+  "data": {
+    "access_token": "<jwt-access-token>",
+    "token_type": "bearer",
+    "user": {
+      "id": 1,
+      "email": "teacher@example.com",
+      "name": "Demo Teacher",
+      "created_at": "2026-07-23T12:00:00Z",
+      "updated_at": "2026-07-23T12:00:00Z"
+    }
+  }
+}
+```
+
+Invalid credentials return `401 Unauthorized`.
+
 ### GET `/auth/me`
 
-Return the current authenticated teacher.
+Return the current authenticated teacher. This endpoint requires a valid Bearer token.
+
+Authentication failure cases return `401 Unauthorized`:
+
+- Missing token
+- Invalid token
+- Expired token
+- Token user no longer exists
 
 ## Students
 
 ### GET `/students`
 
-Supports `page`, `page_size`, `sort`, `search`, `grade`, `subject`, `active`.
+Requires a valid Bearer token. Supports `page`, `page_size`, `sort`, `search`, `grade`, `subject`, `active`.
 
 ### GET `/students/{id}`
 

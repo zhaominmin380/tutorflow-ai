@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["SECRET_KEY"] = "test-secret-for-sprint-4"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -15,6 +16,17 @@ from app.main import app  # noqa: E402
 class ApiContractTest(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app)
+        self.client.__enter__()
+
+    def tearDown(self) -> None:
+        self.client.__exit__(None, None, None)
+
+    def register_user(self, email: str = "contract@example.com") -> str:
+        response = self.client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "password123", "name": "Contract Teacher"},
+        )
+        return response.json()["data"]["access_token"]
 
     def test_api_v1_routes_are_registered_in_openapi(self) -> None:
         schema = self.client.get("/openapi.json").json()
@@ -39,7 +51,11 @@ class ApiContractTest(unittest.TestCase):
         self.assertTrue(expected_paths.issubset(paths.keys()))
 
     def test_student_list_uses_unified_success_response(self) -> None:
-        response = self.client.get("/api/v1/students?page=1&page_size=20&sort=-created_at")
+        token = self.register_user()
+        response = self.client.get(
+            "/api/v1/students?page=1&page_size=20&sort=-created_at",
+            headers={"Authorization": f"Bearer {token}"},
+        )
 
         self.assertEqual(response.status_code, 200)
         body = response.json()

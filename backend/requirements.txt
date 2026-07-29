@@ -5,3 +5,8 @@ psycopg[binary]
 httpx
 alembic
 email-validator
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt<4.1
+python-dotenv
+python-multipart

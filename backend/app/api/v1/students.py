@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.v1._samples import SAMPLE_STUDENT, list_data
+from app.dependencies.auth import get_current_user
+from app.models import User
 from app.schemas.common import ApiResponse, ErrorResponse
 from app.schemas.student import StudentCreate, StudentListResponse, StudentResponse, StudentUpdate
 
@@ -23,6 +25,7 @@ def list_students(
     grade: str | None = None,
     subject: str | None = None,
     active: bool | None = None,
+    current_user: User = Depends(get_current_user),
 ):
     data = list_data(SAMPLE_STUDENT)
     data["pagination"]["page"] = page
