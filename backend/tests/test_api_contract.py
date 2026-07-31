@@ -65,8 +65,10 @@ class ApiContractTest(unittest.TestCase):
         self.assertEqual(body["data"]["pagination"]["page"], 1)
 
     def test_create_student_contract(self) -> None:
+        token = self.register_user("create-contract@example.com")
         response = self.client.post(
             "/api/v1/students",
+            headers={"Authorization": f"Bearer {token}"},
             json={
                 "name": "王小明",
                 "school": "Demo Junior High",

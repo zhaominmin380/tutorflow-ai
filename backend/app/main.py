@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -29,6 +30,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(api_router)
+db_dependency = Depends(get_db)
 
 
 @app.exception_handler(HTTPException)
@@ -44,7 +46,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"success": False, "message": "Validation error.", "detail": exc.errors()},
+        content=jsonable_encoder({"success": False, "message": "Validation error.", "detail": exc.errors()}),
     )
 
 
@@ -59,7 +61,7 @@ def health():
 
 
 @app.get("/health/db")
-def database_health(db: Session = Depends(get_db)):
+def database_health(db: Session = db_dependency):
     db.execute(text("SELECT 1"))
     return {"status": "ok", "database": "connected"}
 

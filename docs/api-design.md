@@ -186,17 +186,58 @@ Authentication failure cases return `401 Unauthorized`:
 
 ## Students
 
+All Student APIs require a valid Bearer token. Students are scoped to the authenticated user through `user_id`; requests for another user's student return `404 Not Found`.
+
 ### GET `/students`
 
 Requires a valid Bearer token. Supports `page`, `page_size`, `sort`, `search`, `grade`, `subject`, `active`.
 
+Query examples:
+
+```http
+GET /api/v1/students?page=1&page_size=20
+GET /api/v1/students?search=王
+GET /api/v1/students?grade=8&subject=Math
+GET /api/v1/students?active=true
+GET /api/v1/students?sort=name
+GET /api/v1/students?sort=-created_at
+```
+
+Search checks:
+
+- `name`
+- `school`
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Students retrieved.",
+  "data": {
+    "items": [],
+    "pagination": {
+      "page": 1,
+      "page_size": 20,
+      "total": 0,
+      "total_pages": 0
+    }
+  }
+}
+```
+
 ### GET `/students/{id}`
 
-Return one student.
+Return one student owned by the current user.
+
+Failure:
+
+- `401 Unauthorized`: missing or invalid token
+- `404 Not Found`: student does not exist or belongs to another user
 
 ### POST `/students`
 
-Create a student.
+Create a student for the current user. The backend sets `user_id` from the authenticated user.
 
 Request:
 
@@ -211,13 +252,31 @@ Request:
 }
 ```
 
+Response `201` returns the created student with `created_at`.
+
 ### PATCH `/students/{id}`
 
-Partially update a student.
+Partially update a student owned by the current user.
+
+Allowed fields:
+
+- `name`
+- `school`
+- `grade`
+- `subject`
+- `hourly_rate`
+- `note`
+- `is_active`
+
+Protected fields:
+
+- `id`
+- `user_id`
+- `created_at`
 
 ### DELETE `/students/{id}`
 
-Delete a student. Returns `204 No Content`.
+Soft delete a student by setting `is_active=false`. Returns `204 No Content`.
 
 ## Lessons
 
