@@ -42,12 +42,6 @@ class StudentService:
         subject: str | None = None,
         active: bool | None = None,
     ) -> dict[str, object]:
-        sort_desc = sort.startswith("-")
-        sort_field = sort[1:] if sort_desc else sort
-        if sort_field not in self.allowed_sort_fields:
-            sort_field = "created_at"
-            sort_desc = True
-
         items, total = self.student_repository.list(
             db,
             user_id=current_user.id,
@@ -57,10 +51,37 @@ class StudentService:
             grade=grade,
             subject=subject,
             active=active,
-            sort_field=sort_field,
-            sort_desc=sort_desc,
+            **self._sort_options(sort),
         )
+        return self._list_result(items, page, page_size, total)
 
+    def update_student(
+        self,
+        db: Session,
+        current_user: User,
+        student_id: int,
+        data: dict[str, Any],
+    ) -> Student:
+        student = self.get_student(db, current_user=current_user, student_id=student_id)
+        return self.student_repository.update(db, student=student, data=data)
+
+    def delete_student(self, db: Session, current_user: User, student_id: int) -> Student:
+        student = self.get_student(db, current_user=current_user, student_id=student_id)
+        return self.student_repository.soft_delete(db, student=student)
+
+    def _sort_options(self, sort: str) -> dict[str, Any]:
+        sort_desc = sort.startswith("-")
+        sort_field = sort[1:] if sort_desc else sort
+        if sort_field not in self.allowed_sort_fields:
+            sort_field = "created_at"
+            sort_desc = True
+        return {
+            "sort_field": sort_field,
+            "sort_desc": sort_desc,
+        }
+
+    @staticmethod
+    def _list_result(items: list[Student], page: int, page_size: int, total: int) -> dict[str, object]:
         return {
             "items": items,
             "pagination": Pagination(
@@ -70,11 +91,3 @@ class StudentService:
                 total_pages=ceil(total / page_size) if total else 0,
             ),
         }
-
-    def update_student(self, db: Session, current_user: User, student_id: int, data: dict[str, Any]) -> Student:
-        student = self.get_student(db, current_user=current_user, student_id=student_id)
-        return self.student_repository.update(db, student=student, data=data)
-
-    def delete_student(self, db: Session, current_user: User, student_id: int) -> Student:
-        student = self.get_student(db, current_user=current_user, student_id=student_id)
-        return self.student_repository.soft_delete(db, student=student)

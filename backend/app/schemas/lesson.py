@@ -9,7 +9,7 @@ from app.schemas.common import ListResponse
 
 
 class LessonCreate(BaseModel):
-    student_id: int
+    student_id: int = Field(gt=0)
     start_time: datetime
     duration_minutes: int = Field(gt=0)
     status: LessonStatus = LessonStatus.SCHEDULED
@@ -18,11 +18,11 @@ class LessonCreate(BaseModel):
 
 
 class LessonUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     start_time: datetime | None = None
     duration_minutes: int | None = Field(default=None, gt=0)
     status: LessonStatus | None = None
-    location: str | None = Field(default=None, max_length=255)
-    remark: str | None = None
 
 
 class LessonResponse(BaseModel):

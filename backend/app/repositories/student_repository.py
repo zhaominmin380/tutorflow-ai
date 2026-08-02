@@ -17,7 +17,14 @@ class StudentRepository:
         return student
 
     def get_by_id(self, db: Session, student_id: int, user_id: int) -> Student | None:
-        return db.query(Student).filter(Student.id == student_id, Student.user_id == user_id).first()
+        return (
+            db.query(Student)
+            .filter(
+                Student.id == student_id,
+                Student.user_id == user_id,
+            )
+            .first()
+        )
 
     def list(
         self,
@@ -32,7 +39,10 @@ class StudentRepository:
         sort_field: str,
         sort_desc: bool,
     ) -> tuple[list[Student], int]:
-        query = db.query(Student).filter(Student.user_id == user_id)
+        query = (
+            db.query(Student)
+            .filter(Student.user_id == user_id)
+        )
 
         if search:
             pattern = f"%{search}%"
@@ -52,7 +62,7 @@ class StudentRepository:
         if sort_desc:
             sort_column = sort_column.desc()
 
-        items = query.order_by(sort_column).offset((page - 1) * page_size).limit(page_size).all()
+        items = query.order_by(sort_column, Student.id).offset((page - 1) * page_size).limit(page_size).all()
         return items, total
 
     def update(self, db: Session, student: Student, data: dict[str, Any]) -> Student:

@@ -29,7 +29,8 @@ class StudentApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()["data"]["access_token"]
 
-    def auth_headers(self, token: str) -> dict[str, str]:
+    @staticmethod
+    def auth_headers(token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
     def create_student(

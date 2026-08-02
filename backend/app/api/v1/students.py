@@ -17,6 +17,10 @@ router = APIRouter(prefix="/students", tags=["Students"])
 student_service = StudentService()
 db_dependency = Depends(get_db)
 current_user_dependency = Depends(get_current_user)
+page_query = Query(1, ge=1)
+page_size_query = Query(20, ge=1, le=100)
+student_sort_query = Query("-created_at", pattern="^-?(name|created_at)$")
+student_active_query = Query(default=None)
 
 
 @router.get(
@@ -27,13 +31,13 @@ current_user_dependency = Depends(get_current_user)
     responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
 )
 def list_students(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    sort: str = Query("-created_at", pattern="^-?(name|created_at)$"),
+    page: int = page_query,
+    page_size: int = page_size_query,
+    sort: str = student_sort_query,
     search: str | None = None,
     grade: str | None = None,
     subject: str | None = None,
-    active: bool | None = None,
+    active: bool | None = student_active_query,
     db: Session = db_dependency,
     current_user: User = current_user_dependency,
 ):

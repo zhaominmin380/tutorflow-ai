@@ -282,15 +282,20 @@ Soft delete a student by setting `is_active=false`. Returns `204 No Content`.
 
 ### GET `/lessons`
 
-Supports `page`, `page_size`, `sort`, `search`, `student_id`, `status`.
+Requires a valid Bearer token and returns only the current user's lessons. Supports `page`, `page_size`, `sort`, `search`, `student_id`, `status`, `start_date`, and `end_date`.
+
+- `search` matches the student name, lesson location, or remark.
+- `start_date` and `end_date` use `YYYY-MM-DD` and form an inclusive date range.
+- Sort supports `date` (an alias for `start_time`), `start_time`, `created_at`, and `status`; prefix with `-` for descending order.
+- Supplying an unknown or inactive student in `student_id` returns `404`.
 
 ### GET `/lessons/{id}`
 
-Return one lesson.
+Return one lesson owned by the current user. Missing lessons and lessons owned by another user both return `404`.
 
 ### POST `/lessons`
 
-Create a lesson.
+Create a lesson for an active student owned by the current user. The backend validates student ownership and requires a positive `duration_minutes`.
 
 Request:
 
@@ -307,11 +312,15 @@ Request:
 
 ### PATCH `/lessons/{id}`
 
-Partially update a lesson.
+Partially update `start_time`, `duration_minutes`, or `status`. `student_id`, `location`, and `remark` are not updateable through this endpoint.
 
 ### DELETE `/lessons/{id}`
 
-Delete a lesson. Returns `204 No Content`.
+Permanently delete a lesson and its related note/payment records through the configured database cascade. Returns `204 No Content`.
+
+### GET `/students/{student_id}/lessons`
+
+Requires a valid Bearer token. Lists lessons for one active student owned by the current user, with the same pagination, status, date-range, and sort options as `GET /lessons`.
 
 ## Lesson Notes
 
