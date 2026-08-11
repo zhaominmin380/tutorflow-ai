@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 
@@ -22,3 +21,18 @@ class AuthSettings:
 
 
 settings = AuthSettings()
+
+
+@dataclass(frozen=True)
+class AISettings:
+    base_url: str | None = os.getenv("AI_BASE_URL")
+    api_key: str | None = os.getenv("AI_API_KEY")
+    model: str = os.getenv("AI_MODEL", "gpt-4.1-mini")
+    timeout_seconds: float = float(os.getenv("AI_TIMEOUT_SECONDS", "20"))
+    max_retries: int = int(os.getenv("AI_MAX_RETRIES", "1"))
+
+    def is_configured(self) -> bool:
+        return bool(self.base_url and self.api_key)
+
+
+ai_settings = AISettings()

@@ -4,7 +4,17 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -120,7 +130,7 @@ class LessonNote(TimestampMixin, Base):
         nullable=False,
     )
     raw_note: Mapped[str | None] = mapped_column(Text)
-    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_summary: Mapped[dict[str, object] | None] = mapped_column(JSON)
     teacher_note: Mapped[str | None] = mapped_column(Text)
     parent_feedback: Mapped[str | None] = mapped_column(Text)
 
@@ -158,7 +168,17 @@ class AILog(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    lesson_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lessons.id", ondelete="SET NULL"),
+        index=True,
+    )
     log_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(100))
+    prompt_version: Mapped[str | None] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(20), default="succeeded", server_default="succeeded", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     response: Mapped[str] = mapped_column(Text, nullable=False)
 

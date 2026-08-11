@@ -55,7 +55,13 @@ class ModelRelationshipTest(unittest.TestCase):
         LessonNote(
             lesson=lesson,
             raw_note="Covered linear equations.",
-            ai_summary="Student practiced solving linear equations.",
+            ai_summary={
+                "overview": "Student practiced solving linear equations.",
+                "learning_progress": ["Solved one-step equations."],
+                "strengths": ["Explained each step."],
+                "difficulties": [],
+                "next_steps": ["Practice two-step equations."],
+            },
             teacher_note="Reviewed and adjusted the AI summary.",
             parent_feedback="Strong progress today.",
         )

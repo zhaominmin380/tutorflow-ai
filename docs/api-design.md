@@ -46,6 +46,9 @@ Authentication errors use the same format:
 - `409 Conflict`: duplicated or conflicting resource
 - `422 Validation Error`: request schema validation failed
 - `500 Internal Server Error`: unexpected server error
+- `502 Bad Gateway`: AI provider returned an invalid response or upstream failure
+- `503 Service Unavailable`: AI provider is unconfigured or rate limited
+- `504 Gateway Timeout`: AI provider request timed out
 
 ## Pagination, Sorting, Searching, Filtering
 
@@ -326,22 +329,35 @@ Requires a valid Bearer token. Lists lessons for one active student owned by the
 
 ### POST `/lessons/{id}/note`
 
-Create a lesson note.
+Requires a valid Bearer token. Create the only Lesson Note for a lesson owned by the current user. `raw_note` is required and cannot be blank. A duplicate note returns `409 Conflict`.
 
 Request:
 
 ```json
 {
-  "raw_note": "Covered linear equations.",
-  "ai_summary": "Student practiced solving linear equations.",
-  "teacher_note": "Reviewed and adjusted the AI summary.",
-  "parent_feedback": "Strong progress today."
+  "raw_note": "Covered linear equations."
 }
 ```
 
+### GET `/lessons/{id}/note`
+
+Return one Lesson Note owned by the current user. Missing or foreign lessons/notes return `404 Not Found`.
+
 ### PATCH `/lessons/{id}/note`
 
-Partially update a lesson note.
+Partially update `raw_note`, `ai_summary`, `teacher_note`, or `parent_feedback`. AI drafts are only saved when explicitly sent to this endpoint.
+
+`ai_summary` has this structured shape:
+
+```json
+{
+  "overview": "Student practiced linear equations.",
+  "learning_progress": ["Solved one-step equations."],
+  "strengths": ["Explained each step."],
+  "difficulties": [],
+  "next_steps": ["Practice two-step equations."]
+}
+```
 
 ## Payments
 
@@ -376,29 +392,42 @@ Return dashboard counters:
 
 ## AI
 
+### Provider Configuration
+
+The built-in provider uses the OpenAI-compatible Chat Completions API. Configure it with environment variables; never store the API key in source control.
+
+```env
+AI_BASE_URL=https://<provider-host>/v1
+AI_API_KEY=<provider-api-key>
+AI_MODEL=gpt-4.1-mini
+AI_TIMEOUT_SECONDS=20
+AI_MAX_RETRIES=1
+```
+
+When `AI_BASE_URL` or `AI_API_KEY` is missing, AI endpoints return `503 Service Unavailable` and record a failed AI Log without the secret.
+
 ### POST `/ai/summary`
 
-Generate lesson summary.
+Requires a valid Bearer token. Generate a structured summary draft from an existing saved `raw_note`; the request does not update the Lesson Note. A missing Note or `raw_note` returns `409 Conflict`.
 
 Request:
 
 ```json
 {
-  "lesson_id": 1,
-  "raw_note": "Covered linear equations."
+  "lesson_id": 1
 }
 ```
 
+Provider timeout returns `504`; rate limits and unavailable configuration return `503`; invalid structured AI output or other upstream failures return `502`. Every provider attempt is recorded in `ai_logs`.
+
 ### POST `/ai/feedback`
 
-Generate parent feedback.
+Requires a valid Bearer token. Generate a parent-feedback draft from an existing saved `ai_summary` and optional `teacher_note`; the request does not update the Lesson Note. A missing saved summary returns `409 Conflict`.
 
 Request:
 
 ```json
 {
-  "lesson_id": 1,
-  "ai_summary": "Student practiced solving linear equations.",
-  "teacher_note": "Reviewed and adjusted the AI summary."
+  "lesson_id": 1
 }
 ```
