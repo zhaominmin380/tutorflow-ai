@@ -20,10 +20,17 @@ class AIProviderResult:
 class AIProviderError(Exception):
     status_code = 502
 
-    def __init__(self, message: str, provider: str = "unknown", model: str = "unknown") -> None:
+    def __init__(
+        self,
+        message: str,
+        provider: str = "unknown",
+        model: str = "unknown",
+        upstream_status_code: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.provider = provider
         self.model = model
+        self.upstream_status_code = upstream_status_code
 
 
 class AIProviderConfigurationError(AIProviderError):
@@ -67,6 +74,12 @@ class OpenAICompatibleProvider:
                 provider=self.provider_name,
                 model=self.model_name,
             )
+        if not ai_settings.data_processing_consent_confirmed:
+            raise AIProviderConfigurationError(
+                "AI provider is disabled until data processing consent is confirmed.",
+                provider=self.provider_name,
+                model=self.model_name,
+            )
 
         endpoint = f"{ai_settings.base_url.rstrip('/')}/chat/completions"
         payload: dict[str, object] = {
@@ -74,11 +87,20 @@ class OpenAICompatibleProvider:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
         }
-        if response_schema is not None:
+        if response_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "lesson_summary",
+                    "strict": True,
+                    "schema": response_schema,
+                },
+            }
+        elif response_schema is not None:
             payload["response_format"] = {"type": "json_object"}
 
+        started_at = perf_counter()
         for attempt in range(ai_settings.max_retries + 1):
-            started_at = perf_counter()
             try:
                 with httpx.Client(timeout=ai_settings.timeout_seconds) as client:
                     response = client.post(
@@ -108,20 +130,30 @@ class OpenAICompatibleProvider:
                     "AI provider rate limit reached.",
                     provider=self.provider_name,
                     model=self.model_name,
+                    upstream_status_code=response.status_code,
                 )
             if response.status_code >= 500:
                 if attempt < ai_settings.max_retries:
                     continue
                 raise AIProviderUpstreamError(
-                    "AI provider is unavailable.",
+                    f"AI provider is unavailable (HTTP {response.status_code}).",
                     provider=self.provider_name,
                     model=self.model_name,
+                    upstream_status_code=response.status_code,
                 )
             if response.is_error:
-                raise AIProviderConfigurationError(
-                    "AI provider rejected the request.",
+                if response.status_code in {401, 403}:
+                    raise AIProviderConfigurationError(
+                        f"AI provider authentication or permission failed (HTTP {response.status_code}).",
+                        provider=self.provider_name,
+                        model=self.model_name,
+                        upstream_status_code=response.status_code,
+                    )
+                raise AIProviderUpstreamError(
+                    f"AI provider rejected the request (HTTP {response.status_code}).",
                     provider=self.provider_name,
                     model=self.model_name,
+                    upstream_status_code=response.status_code,
                 )
 
             try:

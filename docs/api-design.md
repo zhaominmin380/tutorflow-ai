@@ -402,9 +402,13 @@ AI_API_KEY=<provider-api-key>
 AI_MODEL=gpt-4.1-mini
 AI_TIMEOUT_SECONDS=20
 AI_MAX_RETRIES=1
+AI_LOG_RETENTION_DAYS=90
+AI_DATA_PROCESSING_CONSENT_CONFIRMED=false
 ```
 
-When `AI_BASE_URL` or `AI_API_KEY` is missing, AI endpoints return `503 Service Unavailable` and record a failed AI Log without the secret.
+When `AI_BASE_URL` or `AI_API_KEY` is missing, or `AI_DATA_PROCESSING_CONSENT_CONFIRMED` is not `true`, AI endpoints return `503 Service Unavailable` and record a failed AI Log without the secret. Set the consent flag only after the product has disclosed third-party data transfer and obtained the required consent.
+
+AI Logs contain lesson prompts and provider responses. They are retained for `AI_LOG_RETENTION_DAYS` days by policy. Run `python -m app.maintenance` from the `backend` directory on a daily schedule to delete expired logs.
 
 ### POST `/ai/summary`
 

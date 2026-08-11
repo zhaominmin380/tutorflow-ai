@@ -38,8 +38,10 @@ class FakeAIProvider:
     def __init__(self, contents: list[str] | None = None, error: Exception | None = None) -> None:
         self.contents = contents or []
         self.error = error
+        self.response_schemas: list[dict[str, object] | None] = []
 
     def generate(self, prompt: str, response_schema: dict[str, object] | None = None) -> AIProviderResult:
+        self.response_schemas.append(response_schema)
         if self.error:
             raise self.error
         return AIProviderResult(
@@ -128,6 +130,37 @@ class LessonNoteApiTest(unittest.TestCase):
         self.assertEqual(updated.json()["data"]["teacher_note"], "Please keep practicing negatives.")
         self.assertEqual(foreign.status_code, 404)
 
+    def test_lesson_note_rejects_blank_text_fields_and_summary_items(self) -> None:
+        token = self.register_user("note-validation@example.com")
+        lesson_id = self.create_lesson(token)
+
+        blank_create = self.client.post(
+            f"/api/v1/lessons/{lesson_id}/note",
+            headers=self.auth_headers(token),
+            json={"raw_note": "A valid note", "teacher_note": "   "},
+        )
+        self.assertEqual(blank_create.status_code, 422)
+
+        self.create_note(token, lesson_id)
+        blank_update = self.client.patch(
+            f"/api/v1/lessons/{lesson_id}/note",
+            headers=self.auth_headers(token),
+            json={"parent_feedback": "\t"},
+        )
+        invalid_summary_item = self.client.patch(
+            f"/api/v1/lessons/{lesson_id}/note",
+            headers=self.auth_headers(token),
+            json={
+                "ai_summary": {
+                    **SUMMARY,
+                    "learning_progress": ["  "],
+                }
+            },
+        )
+
+        self.assertEqual(blank_update.status_code, 422)
+        self.assertEqual(invalid_summary_item.status_code, 422)
+
     def test_ai_drafts_do_not_update_note_and_logs_are_recorded(self) -> None:
         token = self.register_user("note-ai@example.com")
         lesson_id = self.create_lesson(token)
@@ -137,6 +170,8 @@ class LessonNoteApiTest(unittest.TestCase):
         summary = self.client.post("/api/v1/ai/summary", headers=self.auth_headers(token), json={"lesson_id": lesson_id})
         self.assertEqual(summary.status_code, 200, summary.text)
         self.assertEqual(summary.json()["data"]["ai_summary"]["overview"], SUMMARY["overview"])
+        self.assertIsNotNone(self.fake_provider.response_schemas[0])
+        self.assertIn("properties", self.fake_provider.response_schemas[0])
 
         note_after_draft = self.client.get(f"/api/v1/lessons/{lesson_id}/note", headers=self.auth_headers(token))
         self.assertIsNone(note_after_draft.json()["data"]["ai_summary"])

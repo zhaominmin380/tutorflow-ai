@@ -48,7 +48,15 @@ class AIService:
         lesson = self._get_owned_lesson(db, current_user=current_user, lesson_id=lesson_id)
         lesson_note = self._get_note_with_raw_note(db, lesson_id=lesson_id)
         prompt, prompt_version = self.prompt_service.build_summary_prompt(lesson, lesson.student, lesson_note.raw_note)
-        result = self._generate(db, current_user, lesson, "summary", prompt, prompt_version, response_schema={})
+        result = self._generate(
+            db,
+            current_user,
+            lesson,
+            "summary",
+            prompt,
+            prompt_version,
+            response_schema=AISummaryContent.model_json_schema(),
+        )
         try:
             summary = AISummaryContent.model_validate(json.loads(result.content))
         except (json.JSONDecodeError, ValidationError) as exc:

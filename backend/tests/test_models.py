@@ -8,12 +8,20 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, configure_mappers
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
-from app.database import Base  # noqa: E402
-from app.models import AILog, Lesson, LessonNote, LessonStatus, Payment, PaymentStatus, Student, User  # noqa: E402
+from app.database import Base
+from app.models import (
+    AILog,
+    Lesson,
+    LessonNote,
+    LessonStatus,
+    Payment,
+    PaymentStatus,
+    Student,
+    User,
+)
 
 
 class ModelRelationshipTest(unittest.TestCase):

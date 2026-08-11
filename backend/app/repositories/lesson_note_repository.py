@@ -20,9 +20,19 @@ class LessonNoteRepository:
             db.commit()
         except IntegrityError as exc:
             db.rollback()
-            raise LessonNoteAlreadyExistsError("A lesson note already exists for this lesson.") from exc
+            if self._is_unique_violation(exc):
+                raise LessonNoteAlreadyExistsError("A lesson note already exists for this lesson.") from exc
+            raise
         db.refresh(lesson_note)
         return lesson_note
+
+    @staticmethod
+    def _is_unique_violation(exc: IntegrityError) -> bool:
+        sqlstate = getattr(exc.orig, "sqlstate", None)
+        if sqlstate == "23505":
+            return True
+
+        return "UNIQUE CONSTRAINT FAILED" in str(exc.orig).upper()
 
     def get_by_lesson(self, db: Session, lesson_id: int) -> LessonNote | None:
         return db.query(LessonNote).filter(LessonNote.lesson_id == lesson_id).first()
