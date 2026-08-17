@@ -74,6 +74,9 @@ Lesson filters:
 Payment filters:
 
 - `status`
+- `student_id`
+- `month=YYYY-MM`
+- `sort=amount|paid_at|created_at|status`, with `-` for descending order
 
 List response data:
 
@@ -361,23 +364,140 @@ Partially update `raw_note`, `ai_summary`, `teacher_note`, or `parent_feedback`.
 
 ## Payments
 
-### GET `/payments`
+All Payment APIs require a valid Bearer token. Payment ownership is derived from
+`payment.lesson.student.user_id`; foreign resources return `404` instead of `403`.
 
-Supports `page`, `page_size`, `sort`, `search`, `status`.
+Payment statuses are `pending`, `paid`, `cancelled`, and the legacy `refunded`.
+Sprint 8 does not create or refund payments. A lesson can have only one payment,
+including after cancellation.
 
-### PATCH `/payments/{id}`
+### POST `/payments`
 
-Update payment amount, status, or paid time.
+Create one pending payment for an active lesson owned by the current user.
 
 Request:
 
 ```json
 {
+  "lesson_id": 1,
   "amount": "1200.00",
-  "status": "paid",
-  "paid_at": "2026-07-23T20:00:00Z"
+  "note": "August lesson"
 }
 ```
+
+`amount` must be greater than zero and use at most two decimal places. `note` is
+optional and has a maximum length of 5000 characters.
+
+Response `201`:
+
+```json
+{
+  "success": true,
+  "message": "Payment created.",
+  "data": {
+    "id": 1,
+    "student_id": 2,
+    "lesson_id": 1,
+    "amount": "1200.00",
+    "status": "pending",
+    "paid_at": null,
+    "note": "August lesson",
+    "created_at": "2026-08-11T09:00:00Z",
+    "updated_at": "2026-08-11T09:00:00Z"
+  }
+}
+```
+
+### GET `/payments`
+
+Supports:
+
+- `page` and `page_size` (`1..100`)
+- `student_id`
+- `status`
+- `month=YYYY-MM`
+- `sort=amount|paid_at|created_at|status`, with `-` for descending order
+
+The month filter uses `paid_at` for paid rows and `created_at` for other rows.
+Cancelled and refunded rows remain queryable when explicitly filtered.
+
+### GET `/payments/{id}`
+
+Return one owned payment. Missing and foreign payments return `404`.
+
+### PATCH `/payments/{id}`
+
+Update `amount`, `status`, `paid_at`, or `note`. An empty update is invalid.
+
+Allowed status transitions:
+
+- `pending -> pending`, `paid`, or `cancelled`
+- `paid -> paid` only
+- `cancelled -> cancelled` only
+- `refunded` cannot be updated in Sprint 8
+
+`pending -> paid` requires a timezone-aware `paid_at`; omitting it returns `422`.
+Other invalid status transitions return `409`. Paid payments cannot be
+cancelled, and cancelled payments cannot be restored.
+
+Example:
+
+```json
+{
+  "status": "paid",
+  "paid_at": "2026-08-15T12:00:00+08:00",
+  "note": "Received"
+}
+```
+
+### DELETE `/payments/{id}`
+
+Cancel a pending payment by setting `status` to `cancelled`. This is a soft
+delete: the row is retained. Repeating DELETE for an already cancelled payment
+returns `204`; paid and refunded payments return `409`.
+
+### GET `/payments/statistics/monthly?month=YYYY-MM`
+
+Return paid income for the requested Asia/Taipei calendar month. Only payments
+with `status=paid` and `paid_at` inside the inclusive-start, exclusive-end month
+range are included.
+
+Response `200`:
+
+```json
+{
+  "success": true,
+  "message": "Monthly payment statistics retrieved.",
+  "data": {
+    "month": "2026-08",
+    "monthly_income": "3600.00",
+    "paid_count": 3,
+    "currency": "TWD"
+  }
+}
+```
+
+### GET `/payments/statistics/outstanding`
+
+Return the sum and count of the current user's `pending` payments. Cancelled,
+paid, and refunded payments are excluded.
+
+```json
+{
+  "success": true,
+  "message": "Outstanding payments retrieved.",
+  "data": {
+    "outstanding_amount": "2400.00",
+    "outstanding_count": 2,
+    "currency": "TWD"
+  }
+}
+```
+
+Payment errors use the unified error response. Typical statuses are `401` for
+JWT failures, `404` for missing or foreign resources, `409` for duplicates or
+invalid status transitions, and `422` for invalid amounts, notes, months, or
+sort values.
 
 ## Dashboard
 

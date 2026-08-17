@@ -74,9 +74,11 @@ class ModelRelationshipTest(unittest.TestCase):
             parent_feedback="Strong progress today.",
         )
         Payment(
+            student=student,
             lesson=lesson,
             amount=Decimal("1200.00"),
             status=PaymentStatus.PAID,
+            note="Paid by bank transfer.",
         )
         AILog(
             user=user,
@@ -100,6 +102,8 @@ class ModelRelationshipTest(unittest.TestCase):
         self.assertEqual(saved_user.students[0].lessons[0].lesson_note.teacher_note, "Reviewed and adjusted the AI summary.")
         self.assertEqual(saved_user.students[0].lessons[0].payment.status, PaymentStatus.PAID)
         self.assertEqual(saved_user.students[0].lessons[0].payment.amount, Decimal("1200.00"))
+        self.assertEqual(saved_user.students[0].lessons[0].payment.student_id, saved_user.students[0].id)
+        self.assertEqual(saved_user.students[0].lessons[0].payment.note, "Paid by bank transfer.")
 
 
 if __name__ == "__main__":

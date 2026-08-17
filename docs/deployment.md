@@ -10,7 +10,7 @@ alembic upgrade head
 alembic current
 ```
 
-The command must use the same `DATABASE_URL` as the application. For Sprint 7, the target revision is `20260803_0002`. The API should not receive production traffic until the migration succeeds.
+The command must use the same `DATABASE_URL` as the application. For the current Sprint 8 release, the target revision is `20260811_0003`. The API should not receive production traffic until the migration succeeds.
 
 ## AI Provider Consent
 

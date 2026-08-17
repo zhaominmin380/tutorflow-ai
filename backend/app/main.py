@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session
 from app import models  # noqa: F401
 from app.api.v1.router import api_router
 from app.database import Base, engine, get_db
+
+logger = logging.getLogger(__name__)
 
 
 def init_db() -> None:
@@ -47,6 +50,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=422,
         content=jsonable_encoder({"success": False, "message": "Validation error.", "detail": exc.errors()}),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled application exception", exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "message": "Request failed.",
+            "detail": "Internal server error.",
+        },
     )
 
 

@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -140,7 +141,16 @@ class LessonNote(TimestampMixin, Base):
 class Payment(TimestampMixin, Base):
     __tablename__ = "payments"
 
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_payments_amount_positive"),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
     lesson_id: Mapped[int] = mapped_column(
         ForeignKey("lessons.id", ondelete="CASCADE"),
         unique=True,
@@ -154,12 +164,15 @@ class Payment(TimestampMixin, Base):
             name="payment_status",
             values_callable=lambda enum_class: [item.value for item in enum_class],
         ),
+        index=True,
         default=PaymentStatus.PENDING,
         server_default=PaymentStatus.PENDING.value,
         nullable=False,
     )
-    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    note: Mapped[str | None] = mapped_column(Text)
 
+    student: Mapped[Student] = relationship()
     lesson: Mapped[Lesson] = relationship(back_populates="payment")
 
 
