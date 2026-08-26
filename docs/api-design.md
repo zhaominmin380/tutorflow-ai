@@ -501,14 +501,63 @@ sort values.
 
 ## Dashboard
 
+All Dashboard APIs require a valid Bearer token and only aggregate data owned by
+the authenticated tutor. Reporting uses the `Asia/Taipei` timezone. Monthly
+analytics use an inclusive start and exclusive end boundary for `month=YYYY-MM`.
+
 ### GET `/dashboard`
+### GET `/dashboard/overview`
 
-Return dashboard counters:
+Both routes return the same backward-compatible overview data:
 
-- `today_lessons_count`
-- `month_income`
-- `active_students_count`
-- `unpaid_payments_count`
+```json
+{
+  "success": true,
+  "message": "Dashboard retrieved.",
+  "data": {
+    "date": "2026-08-17",
+    "month": "2026-08",
+    "today_lessons_count": 3,
+    "month_income": "24000.00",
+    "active_students_count": 8,
+    "unpaid_payments_count": 2,
+    "outstanding_payment_amount": "4500.00",
+    "ai_requests_count": 12
+  }
+}
+```
+
+`month_income` includes only payments with `status=paid` and `paid_at` in
+the current local month. `unpaid_payments_count` and
+`outstanding_payment_amount` include only `pending` payments.
+
+### GET `/dashboard/income?month=YYYY-MM`
+
+Return paid income totals and one daily chart point for every calendar day in
+the requested month. Income is grouped by the local date of `paid_at`.
+Cancelled, refunded, and pending payments are excluded.
+
+### GET `/dashboard/students`
+
+Return `total_students`, `active_students`, and `inactive_students` for the
+authenticated tutor. The total equals the sum of active and inactive counts.
+
+### GET `/dashboard/lessons?month=YYYY-MM`
+
+Return the monthly lesson total, counts for `scheduled`, `completed`,
+`cancelled`, and `no_show`, plus a daily chart-ready series. Lessons are
+grouped by `start_time` and every supported status key is returned even when
+its count is zero.
+
+### GET `/dashboard/ai?month=YYYY-MM`
+
+Return counts for `summary` and `parent_feedback` AI logs, total requests,
+success/failure counts, and average duration in milliseconds. Failed attempts
+are included in request totals but not exposed with prompt or response data.
+
+Empty data returns zero totals, `0.00` monetary values, and zero-filled daily
+series. Invalid or missing monthly parameters return `422 Validation Error`;
+missing or invalid JWTs return `401 Unauthorized`.
 
 ## AI
 
