@@ -106,6 +106,55 @@ describe('TutorFlow application', () => {
     expect(await screen.findByLabelText('家長回饋')).toBeVisible()
   })
 
+  it('keeps raw notes visible and blocks navigation after autosave fails', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const newNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '開始記錄', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockRejectedValue(new ApiError(404, 'not found')), createLessonNote: vi.fn().mockResolvedValue(newNote), updateLessonNote: vi.fn().mockRejectedValue(new Error('offline')) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '開始課堂紀錄' }))
+    await user.type(await screen.findByLabelText('原始筆記'), '學生今天完成函數複習。')
+    expect(await screen.findByText('儲存失敗，請重試')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '返回課程' }))
+    expect(await screen.findByRole('heading', { name: '原始筆記尚未儲存' })).toBeVisible()
+    expect(screen.getByLabelText('原始筆記')).toHaveValue('學生今天完成函數複習。')
+  })
+
+  it('creates a Lesson record only once while the deliberate start request is pending', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockRejectedValue(new ApiError(404, 'not found')), createLessonNote: vi.fn(() => new Promise<LessonNote>(() => {})) })
+    render(<App api={api} />)
+    const start = await screen.findByRole('button', { name: '開始課堂紀錄' })
+    await user.click(start)
+    await user.click(start)
+    expect(api.createLessonNote).toHaveBeenCalledTimes(1)
+    expect(start).toBeDisabled()
+  })
+
+  it('restores a raw note after a 401 autosave when the same Tutor signs in again', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const rawNote = '學生今天完成函數複習。'
+    const newNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '開始記錄', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({
+      login: vi.fn().mockResolvedValue(authResult),
+      getLesson: vi.fn().mockResolvedValue(lesson),
+      getStudent: vi.fn().mockResolvedValue(student),
+      getLessonNote: vi.fn().mockRejectedValueOnce(new ApiError(404, 'not found')).mockResolvedValue(newNote),
+      createLessonNote: vi.fn().mockResolvedValue(newNote),
+      updateLessonNote: vi.fn().mockRejectedValueOnce(new ApiError(401, 'expired')).mockResolvedValue({ ...newNote, raw_note: rawNote }),
+    })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '開始課堂紀錄' }))
+    await user.type(await screen.findByLabelText('原始筆記'), rawNote)
+    expect(await screen.findByRole('heading', { name: '登入 TutorFlow' })).toBeVisible()
+    await user.type(screen.getByLabelText('電子信箱'), tutor.email)
+    await user.type(screen.getByLabelText('密碼'), 'password123')
+    await user.click(screen.getByRole('button', { name: '登入' }))
+    expect(await screen.findByLabelText('原始筆記')).toHaveValue(rawNote)
+  })
+
   it('clears the session and returns to sign in when the API reports unauthorized', async () => {
     setSession()
     const api = createApi({ getDashboard: vi.fn().mockRejectedValue(new ApiError(401, 'expired')) })
