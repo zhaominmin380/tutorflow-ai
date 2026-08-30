@@ -68,6 +68,27 @@ describe('TutorFlow application', () => {
     expect(screen.getByLabelText('姓名')).toHaveValue(student.name)
   })
 
+  it('loads another Lesson page only when the Tutor explicitly asks for more', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons')
+    const user = userEvent.setup()
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+    const today = `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}-${parts.find((part) => part.type === 'day')?.value}`
+    const firstLesson: Lesson = { ...lesson, start_time: `${today}T14:00:00+08:00` }
+    const secondLesson: Lesson = { ...lesson, id: 32, start_time: `${today}T16:00:00+08:00` }
+    const api = createApi({
+      listLessons: vi.fn().mockImplementation((query) => Promise.resolve(query?.page === 2
+        ? { items: [secondLesson], pagination: { page: 2, page_size: 20, total: 2, total_pages: 2 } }
+        : { items: [firstLesson], pagination: { page: 1, page_size: 20, total: 2, total_pages: 2 } },
+      )),
+      listStudents: vi.fn().mockResolvedValue(paged([student])),
+    })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '載入更多課程' }))
+    await waitFor(() => expect(api.listLessons).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 20 })))
+    expect(await screen.findByText('16:00–17:00')).toBeVisible()
+    expect(screen.queryByRole('button', { name: '載入更多課程' })).not.toBeInTheDocument()
+  })
+
   it('keeps raw notes autosaved while AI content remains an explicit Tutor save', async () => {
     setSession(); window.history.pushState({}, '', '/lessons/31/record')
     const user = userEvent.setup()
