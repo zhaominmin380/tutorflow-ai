@@ -1,122 +1,193 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  createBrowserRouter,
+  NavLink,
+  Navigate,
+  Route,
+  RouterProvider,
+  Routes,
+  useBlocker,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom'
+import {
+  createTutorApi,
+  isApiError,
+  type AuthResult,
+  type DashboardOverview,
+  type Lesson,
+  type LessonInput,
+  type LessonNote,
+  type LessonStatus,
+  type LessonSummary,
+  type Paginated,
+  type Student,
+  type StudentInput,
+  type TutorApi,
+} from './api'
+import leafMark from './assets/leaf.svg'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+const SESSION_KEY = 'tutorflow.session'
+const EMPTY_RECORD_VALUE = '開始記錄'
+const STATUS_LABEL: Record<LessonStatus, string> = { scheduled: '已排定', completed: '已完成', cancelled: '已取消', no_show: '未到' }
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+interface Session { accessToken: string; user: AuthResult['user'] }
+interface AppProps { api?: TutorApi }
 
-      <div className="ticks"></div>
+function loadSession(): Session | null {
+  try { const raw = window.sessionStorage.getItem(SESSION_KEY); return raw ? (JSON.parse(raw) as Session) : null } catch { return null }
+}
+function saveSession(result: AuthResult): Session {
+  const session = { accessToken: result.access_token, user: result.user }
+  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  return session
+}
+function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) { return parts.find((item) => item.type === type)?.value ?? '' }
+function toTaipeiDate(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  return `${part(parts, 'year')}-${part(parts, 'month')}-${part(parts, 'day')}`
+}
+function formatDate(dateValue: string): string {
+  const date = new Date(dateValue.length > 10 ? dateValue : `${dateValue}T12:00:00+08:00`)
+  const weekday = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', weekday: 'narrow' }).format(date)
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  return `${part(parts, 'year')}/${part(parts, 'month')}/${part(parts, 'day')}（${weekday}）`
+}
+function formatTime(value: string): string { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value)) }
+function formatTimeRange(lesson: Lesson): string {
+  const start = new Date(lesson.start_time)
+  const end = new Date(start.getTime() + lesson.duration_minutes * 60_000)
+  return `${formatTime(start.toISOString())}–${formatTime(end.toISOString())}`
+}
+function localToTaipeiIso(value: string): string { return `${value}:00+08:00` }
+function addDays(value: string, count: number): string { const date = new Date(`${value}T12:00:00+08:00`); date.setUTCDate(date.getUTCDate() + count); return toTaipeiDate(date) }
+function weekStart(value: string): string { const day = new Date(`${value}T12:00:00+08:00`).getUTCDay(); return addDays(value, day === 0 ? -6 : 1 - day) }
+function monthRange(value: string): { start: string; end: string } { const [year, month] = value.slice(0, 7).split('-').map(Number); const last = new Date(Date.UTC(year, month, 0)).getUTCDate(); return { start: `${value.slice(0, 7)}-01`, end: `${value.slice(0, 7)}-${String(last).padStart(2, '0')}` } }
+function errorMessage(error: unknown, fallback = '目前無法完成此操作，請稍後再試。'): string {
+  if (isApiError(error)) {
+    if (error.status === 422) {
+      const labels: Record<string, string> = { name: '姓名', school: '學校', grade: '年級', subject: '科目', email: '電子信箱', password: '密碼', student_id: '學生', start_time: '日期與時間', duration_minutes: '課程長度', raw_note: '原始筆記', ai_summary: '課堂摘要', parent_feedback: '家長回饋' }
+      const fields = Array.isArray(error.detail) ? error.detail.map((detail) => {
+        const location = (detail as { loc?: unknown[] }).loc?.at(-1)
+        return typeof location === 'string' ? labels[location] ?? location : ''
+      }).filter(Boolean) : []
+      return fields.length ? `請檢查：${[...new Set(fields)].join('、')}` : '請檢查欄位內容後再試。'
+    }
+    if (error.status === 409) return '目前資料尚未符合這個操作的條件。'
+    if ([502, 503, 504].includes(error.status)) return 'AI 服務暫時無法使用；你仍可自行撰寫並儲存。'
+    if (typeof error.detail === 'string') return error.detail
+  }
+  return fallback
+}
+function emptySummary(): LessonSummary { return { overview: '', learning_progress: [], strengths: [], difficulties: [], next_steps: [] } }
+function BrandMark({ className }: { className: 'brand-lockup' | 'auth-brand' }) { return <div className={className}><div className="brand-wordmark"><span>TutorFlow</span><img src={leafMark} alt="" /></div><small>個人教學工作區</small></div> }
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+export default function App({ api }: AppProps) {
+  const router = useMemo(() => createBrowserRouter([{ path: '*', element: <TutorFlowApp api={api} /> }]), [api])
+  return <RouterProvider router={router} />
 }
 
-export default App
+function TutorFlowApp({ api }: AppProps) {
+  const [session, setSession] = useState<Session | null>(loadSession)
+  const defaultApi = useMemo(() => createTutorApi(() => session?.accessToken ?? null), [session?.accessToken])
+  const client = api ?? defaultApi
+  const logout = useCallback(() => { window.sessionStorage.removeItem(SESSION_KEY); setSession(null) }, [])
+  const handleApiError = useCallback((error: unknown) => { if (isApiError(error, 401)) { logout(); return true }; return false }, [logout])
+  if (!session) return <AuthPage api={client} onAuthenticated={(result) => setSession(saveSession(result))} />
+  return <AppShell session={session} onLogout={logout}><Routes><Route path="/" element={<TodayPage api={client} onApiError={handleApiError} />} /><Route path="/students" element={<StudentsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons" element={<LessonsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons/:lessonId/record" element={<LessonRecordPage api={client} onApiError={handleApiError} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></AppShell>
+}
+
+function AuthPage({ api, onAuthenticated }: { api: TutorApi; onAuthenticated: (result: AuthResult) => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false)
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setPending(true); setError(null)
+    try { const result = mode === 'login' ? await api.login({ email, password }) : await api.register({ name, email, password }); onAuthenticated(result) }
+    catch (requestError) { setError(errorMessage(requestError, mode === 'login' ? '帳號或密碼不正確。' : '無法建立帳號，請再試一次。')) }
+    finally { setPending(false) }
+  }
+  return <main className="auth-page grid min-h-screen place-items-center p-6"><section className="auth-card" aria-labelledby="auth-title"><BrandMark className="auth-brand" /><div className="auth-copy"><p className="eyebrow">TODAY-FIRST WORKSPACE</p><h1 id="auth-title">{mode === 'login' ? '登入 TutorFlow' : '建立 TutorFlow 帳號'}</h1><p>{mode === 'login' ? '回到今天的教學工作。' : '用最少的步驟建立你的教學工作區。'}</p></div><div className="auth-tabs" role="tablist" aria-label="帳號操作"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')} role="tab" aria-selected={mode === 'login'}>登入</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')} role="tab" aria-selected={mode === 'register'}>建立帳號</button></div><form className="form-stack" onSubmit={submit} noValidate>{mode === 'register' && <label>姓名<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>}<label>電子信箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密碼<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required /></label>{error && <p className="error-text" role="alert">{error}</p>}<button className="button button-primary" type="submit" disabled={pending}>{pending ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form></section></main>
+}
+
+function AppShell({ session, onLogout, children }: { session: Session; onLogout: () => void; children: ReactNode }) {
+  const navigation = [{ to: '/', label: '今日', end: true }, { to: '/students', label: '學生' }, { to: '/lessons', label: '課程' }]
+  const initial = session.user.name.trim().slice(0, 1) || '教'
+  return <div className="app-shell flex min-h-screen"><aside className="sidebar sticky top-0 flex h-screen flex-col"><BrandMark className="brand-lockup" /><nav className="primary-nav" aria-label="主要導覽">{navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><span aria-hidden="true" />{item.label}</NavLink>)}</nav><div className="sidebar-user"><span className="avatar" aria-hidden="true">{initial}</span><div><strong>{session.user.name}</strong><small>個人教師</small></div><button type="button" className="text-button" onClick={onLogout}>登出</button></div></aside><main className="workspace min-w-0 flex-1">{children}</main><nav className="mobile-nav" aria-label="主要導覽">{navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>{item.label}</NavLink>)}</nav></div>
+}
+function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: ReactNode }) { return <header className="page-header flex items-end justify-between"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</header> }
+function StatusChip({ status }: { status: LessonStatus | 'active' | 'inactive' | 'draft' | 'saved' }) { const labels: Record<string, string> = { ...STATUS_LABEL, active: '在學', inactive: '已封存', draft: '草稿未儲存', saved: '已儲存' }; return <span className={`status-chip status-${status}`}>{labels[status]}</span> }
+function LoadingCard({ label = '載入中…' }: { label?: string }) { return <div className="loading-card" aria-live="polite"><div className="skeleton-lines" aria-hidden="true"><span /><span /><span /></div><span className="save-status">{label}</span></div> }
+function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) { return <div className="error-panel" role="alert"><strong>暫時無法載入</strong><p>{message}</p><button type="button" className="button button-secondary" onClick={onRetry}>重試</button></div> }
+function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) { return <div className="overlay" role="presentation"><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h2 id="dialog-title">{title}</h2>{children}<button type="button" className="dialog-close" onClick={onClose} aria-label="關閉">×</button></div></div> }
+function Sheet({ title, subtitle, children, onClose }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void }) { return <div className="overlay sheet-overlay" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><header className="sheet-header"><div><h2 id="sheet-title">{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button type="button" className="icon-button" onClick={onClose} aria-label="關閉">×</button></header>{children}</section></div> }
+
+function TodayPage({ api, onApiError }: { api: TutorApi; onApiError: (error: unknown) => boolean }) {
+  const navigate = useNavigate(); const [overview, setOverview] = useState<DashboardOverview | null>(null); const [lessons, setLessons] = useState<Lesson[]>([]); const [students, setStudents] = useState<Student[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [completing, setCompleting] = useState<number | null>(null)
+  const today = toTaipeiDate(new Date())
+  const load = useCallback(async () => { setLoading(true); setError(null); try { const [dashboard, lessonData, studentData] = await Promise.all([api.getDashboard(), api.listLessons({ start_date: today, end_date: today, sort: 'start_time', page_size: 100 }), api.listStudents({ page_size: 100, active: true, sort: 'name' })]); setOverview(dashboard); setLessons(lessonData.items); setStudents(studentData.items) } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } finally { setLoading(false) } }, [api, onApiError, today])
+  useEffect(() => { const timer = window.setTimeout(() => { void load() }, 0); return () => window.clearTimeout(timer) }, [load])
+  async function complete(lesson: Lesson) { setCompleting(lesson.id); try { await api.updateLesson(lesson.id, { status: 'completed' }); navigate(`/lessons/${lesson.id}/record`) } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } finally { setCompleting(null) } }
+  const studentById = new Map(students.map((student) => [student.id, student])); const scheduled = lessons.filter((lesson) => lesson.status === 'scheduled').sort((a, b) => a.start_time.localeCompare(b.start_time)); const nextLesson = scheduled[0]
+  return <section className="page-stack"><PageHeader eyebrow={formatDate(today)} title="今日" action={<button type="button" className="button button-primary" onClick={() => navigate('/lessons', { state: { create: true } })}>安排課程</button>} />{loading && <LoadingCard />}{error && <ErrorCard message={error} onRetry={() => void load()} />}{!loading && !error && overview && overview.active_students_count === 0 && <div className="empty-state"><span className="empty-mark" aria-hidden="true">＋</span><h2>先建立第一位學生</h2><p>安排課程前需要先有學生資料。建立後即可在今日看見當天的課程與待寫的紀錄。</p><button type="button" className="button button-primary" onClick={() => navigate('/students', { state: { create: true } })}>新增學生</button></div>}{!loading && !error && overview && overview.active_students_count > 0 && <><div className="stat-grid"><article className="stat-card"><span>今日課程</span><strong>{overview.today_lessons_count}<small>堂</small></strong></article><article className="stat-card"><span>在學學生</span><strong>{overview.active_students_count}<small>位</small></strong></article></div><section className="section-stack" aria-labelledby="today-agenda"><div className="section-heading"><h2 id="today-agenda">今日議程</h2><NavLink to="/lessons">查看全部課程</NavLink></div>{lessons.length === 0 ? <div className="quiet-empty">今天尚未安排課程。<button type="button" className="text-button" onClick={() => navigate('/lessons', { state: { create: true } })}>安排課程</button></div> : <div className="agenda-card">{lessons.map((lesson) => { const student = studentById.get(lesson.student_id); const isNext = lesson.id === nextLesson?.id; return <article key={lesson.id} className={`agenda-row ${isNext ? 'next' : ''}`}><div className="agenda-time"><span>{formatTimeRange(lesson)}</span>{isNext && <small>NEXT</small>}</div><div className="agenda-student"><strong className={lesson.status === 'completed' ? 'completed-name' : ''}>{student?.name ?? '學生資料載入中'}</strong><span>{student?.subject ?? '未設定科目'} · {lesson.location || '未安排地點'}</span></div><StatusChip status={lesson.status} />{lesson.status === 'scheduled' && isNext ? <button type="button" className="button button-primary compact" disabled={completing === lesson.id} onClick={() => void complete(lesson)}>{completing === lesson.id ? '處理中…' : '完成並撰寫紀錄'}</button> : lesson.status === 'completed' ? <button type="button" className="button button-secondary compact" onClick={() => navigate(`/lessons/${lesson.id}/record`)}>檢視紀錄</button> : <button type="button" className="button button-secondary compact" onClick={() => navigate('/lessons', { state: { detailId: lesson.id } })}>課程詳情</button>}</article>})}</div>}</section></>}</section>
+}
+
+function StudentsPage({ api, onApiError }: { api: TutorApi; onApiError: (error: unknown) => boolean }) {
+  const location = useLocation(); const navigate = useNavigate(); const [data, setData] = useState<Paginated<Student> | null>(null); const [query, setQuery] = useState(''); const [active, setActive] = useState<'all' | 'true' | 'false'>('all'); const [filterOpen, setFilterOpen] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [editor, setEditor] = useState<Student | 'new' | null>(null); const [detail, setDetail] = useState<Student | null>(null); const [archiveTarget, setArchiveTarget] = useState<Student | null>(null)
+  const load = useCallback(async (page = 1, append = false) => { setLoading(true); setError(null); try { const result = await api.listStudents({ page, page_size: 20, search: query || undefined, active: active === 'all' ? undefined : active === 'true', sort: 'name' }); setData((previous) => append && previous ? { ...result, items: [...previous.items, ...result.items] } : result) } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } finally { setLoading(false) } }, [active, api, onApiError, query])
+  useEffect(() => { const timer = window.setTimeout(() => { void load() }, 0); return () => window.clearTimeout(timer) }, [load]); useEffect(() => { const timer = window.setTimeout(() => { const state = location.state as { create?: boolean } | null; if (state?.create) { setEditor('new'); navigate('/students', { replace: true, state: null }) } }, 0); return () => window.clearTimeout(timer) }, [location.state, navigate])
+  async function save(input: StudentInput) { try { if (editor === 'new') await api.createStudent(input); else if (editor) await api.updateStudent(editor.id, input); setEditor(null); await load() } catch (requestError) { if (onApiError(requestError)) return; throw requestError } }
+  async function archive() { if (!archiveTarget) return; try { if (archiveTarget.is_active) await api.archiveStudent(archiveTarget.id); else await api.updateStudent(archiveTarget.id, { is_active: true }); setArchiveTarget(null); setDetail(null); await load() } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } }
+  const summary = data?.pagination.total ?? 0
+  return <section className="page-stack compact-stack"><PageHeader eyebrow={`${summary} 位學生`} title="學生" action={<button type="button" className="button button-primary" onClick={() => setEditor('new')}>新增學生</button>} /><div className="toolbar-card"><form className="search-form" onSubmit={(event) => { event.preventDefault(); void load() }}><input aria-label="搜尋學生" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋姓名、學校或科目" /><button className="button button-secondary" type="submit">搜尋</button></form><button type="button" className="button button-secondary" onClick={() => setFilterOpen((open) => !open)} aria-expanded={filterOpen}>篩選</button></div>{filterOpen && <div className="filter-panel"><label>學生狀態<select value={active} onChange={(event) => setActive(event.target.value as typeof active)}><option value="all">全部</option><option value="true">在學</option><option value="false">已封存</option></select></label></div>}{loading && !data && <LoadingCard />}{error && <ErrorCard message={error} onRetry={() => void load()} />}{!loading && !error && data && data.items.length === 0 && <div className="empty-state small"><span className="empty-mark" aria-hidden="true">＋</span><h2>尚未找到學生</h2><p>調整搜尋或篩選條件，或使用頁面右上方的新增學生開始。</p></div>}{data && data.items.length > 0 && <><div className="data-table students-table" role="table" aria-label="學生名單"><div className="table-row table-head" role="row"><span>學生</span><span>年級</span><span>科目</span><span>備註</span><span>狀態</span></div>{data.items.map((student) => <button type="button" className="table-row table-button" key={student.id} onClick={() => setDetail(student)}><span><strong>{student.name}</strong><small>{student.school || '未設定學校'}</small></span><span>{student.grade || '—'}</span><span>{student.subject || '—'}</span><span className="truncate">{student.note || '—'}</span><span><StatusChip status={student.is_active ? 'active' : 'inactive'} /></span></button>)}</div>{data.pagination.page < data.pagination.total_pages && <button type="button" className="button button-secondary load-more" disabled={loading} onClick={() => void load(data.pagination.page + 1, true)}>載入更多</button>}</>}{editor && <StudentEditor student={editor === 'new' ? null : editor} onClose={() => setEditor(null)} onSave={save} />}{detail && <StudentDetail student={detail} onClose={() => setDetail(null)} onEdit={() => setEditor(detail)} onArchive={() => setArchiveTarget(detail)} onLessons={() => navigate('/lessons', { state: { studentId: detail.id } })} />}{archiveTarget && <Dialog title={`${archiveTarget.is_active ? '封存' : '重新啟用'} ${archiveTarget.name}？`} onClose={() => setArchiveTarget(null)}><p>{archiveTarget.is_active ? '封存後，這位學生將無法被安排新課程，但既有教學紀錄會保留。' : '重新啟用後，這位學生可以再次安排課程。'}</p><div className="dialog-actions"><button type="button" className="button button-secondary" onClick={() => setArchiveTarget(null)}>取消</button><button type="button" className="button button-primary" onClick={() => void archive()}>{archiveTarget.is_active ? '確認封存' : '確認啟用'}</button></div></Dialog>}</section>
+}
+
+function StudentEditor({ student, onClose, onSave }: { student: Student | null; onClose: () => void; onSave: (input: StudentInput) => Promise<void> }) {
+  const [form, setForm] = useState({ name: student?.name ?? '', school: student?.school ?? '', grade: student?.grade ?? '', subject: student?.subject ?? '', hourly_rate: student?.hourly_rate?.toString() ?? '', note: student?.note ?? '', isActive: student?.is_active ?? true }); const [error, setError] = useState<string | null>(null); const [saving, setSaving] = useState(false); const update = (key: Exclude<keyof typeof form, 'isActive'>, value: string) => setForm((current) => ({ ...current, [key]: value }))
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!form.name.trim() || !form.school.trim() || !form.grade.trim() || !form.subject.trim()) { setError('請完成姓名、學校、年級與科目。'); return }; setSaving(true); setError(null); try { await onSave({ name: form.name.trim(), school: form.school.trim(), grade: form.grade.trim(), subject: form.subject.trim(), hourly_rate: form.hourly_rate ? Number(form.hourly_rate) : undefined, note: form.note.trim() || undefined, is_active: student ? form.isActive : undefined }) } catch (requestError) { setError(errorMessage(requestError)) } finally { setSaving(false) } }
+  return <Sheet title={student ? '編輯學生' : '新增學生'} subtitle="建立可安排課程的學生資料" onClose={onClose}><form className="form-stack sheet-form" onSubmit={submit}><label>姓名<input value={form.name} onChange={(event) => update('name', event.target.value)} autoFocus /></label><label>學校<input value={form.school} onChange={(event) => update('school', event.target.value)} /></label><label>年級<input value={form.grade} onChange={(event) => update('grade', event.target.value)} /></label><label>科目<input value={form.subject} onChange={(event) => update('subject', event.target.value)} /></label>{student && !student.is_active && <label className="checkbox-label"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} />重新啟用這位學生</label>}<label>鐘點費（選填）<input type="number" min="0" value={form.hourly_rate} onChange={(event) => update('hourly_rate', event.target.value)} /></label><label>備註（選填）<textarea value={form.note} onChange={(event) => update('note', event.target.value)} /></label>{error && <p className="error-text" role="alert">{error}</p>}<div className="form-actions"><button type="button" className="button button-secondary" onClick={onClose}>取消</button><button type="submit" className="button button-primary" disabled={saving}>{saving ? '儲存中…' : '儲存學生'}</button></div></form></Sheet>
+}
+function StudentDetail({ student, onClose, onEdit, onArchive, onLessons }: { student: Student; onClose: () => void; onEdit: () => void; onArchive: () => void; onLessons: () => void }) { return <Sheet title={student.name} subtitle={`${student.school || '未設定學校'} · ${student.grade || '未設定年級'}`} onClose={onClose}><dl className="detail-list"><div><dt>科目</dt><dd>{student.subject || '—'}</dd></div><div><dt>鐘點費</dt><dd>{student.hourly_rate ? `NT$ ${student.hourly_rate}` : '未設定'}</dd></div><div><dt>狀態</dt><dd><StatusChip status={student.is_active ? 'active' : 'inactive'} /></dd></div></dl>{student.note && <p className="sheet-note">{student.note}</p>}<div className="sheet-actions"><button type="button" className="button button-primary" onClick={onEdit}>{student.is_active ? '編輯學生' : '編輯並重新啟用'}</button><button type="button" className="button button-secondary" onClick={onLessons}>查看課程</button>{student.is_active && <button type="button" className="text-button" onClick={onArchive}>封存學生</button>}</div></Sheet> }
+
+function LessonsPage({ api, onApiError }: { api: TutorApi; onApiError: (error: unknown) => boolean }) {
+  const location = useLocation(); const navigate = useNavigate(); const today = toTaipeiDate(new Date()); const [view, setView] = useState<'agenda' | 'month'>('agenda'); const [anchor, setAnchor] = useState(weekStart(today)); const [lessonData, setLessonData] = useState<Paginated<Lesson> | null>(null); const [students, setStudents] = useState<Student[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [scheduleOpen, setScheduleOpen] = useState(false); const [detail, setDetail] = useState<Lesson | null>(null); const [studentFilter, setStudentFilter] = useState<number | undefined>()
+  const range = useMemo(() => view === 'agenda' ? { start: anchor, end: addDays(anchor, 6) } : monthRange(anchor), [anchor, view])
+  const load = useCallback(async () => { setLoading(true); setError(null); try { const [lessons, activeStudents] = await Promise.all([api.listLessons({ start_date: range.start, end_date: range.end, page_size: 100, sort: 'start_time', student_id: studentFilter }), api.listStudents({ page_size: 100, active: true, sort: 'name' })]); setLessonData(lessons); setStudents(activeStudents.items) } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } finally { setLoading(false) } }, [api, onApiError, range.end, range.start, studentFilter])
+  useEffect(() => { const timer = window.setTimeout(() => { void load() }, 0); return () => window.clearTimeout(timer) }, [load]); useEffect(() => { const timer = window.setTimeout(() => { const state = location.state as { create?: boolean; detailId?: number; studentId?: number } | null; if (!state) return; if (state.create) setScheduleOpen(true); if (state.detailId) { const match = lessonData?.items.find((lesson) => lesson.id === state.detailId); if (match) setDetail(match) }; if (state.studentId) setStudentFilter(state.studentId); navigate('/lessons', { replace: true, state: null }) }, 0); return () => window.clearTimeout(timer) }, [lessonData, location.state, navigate])
+  function move(amount: number) { setAnchor((current) => addDays(current, view === 'agenda' ? amount * 7 : amount * 31)) }
+  function setPlanningView(next: 'agenda' | 'month') { setView(next); setAnchor(next === 'month' ? `${anchor.slice(0, 7)}-01` : weekStart(anchor)) }
+  async function create(input: LessonInput) { await api.createLesson(input); setScheduleOpen(false); await load() }
+  async function updateStatus(lesson: Lesson, status: LessonStatus) { try { const updated = await api.updateLesson(lesson.id, { status }); setDetail(updated); await load() } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } }
+  async function complete(lesson: Lesson) { try { await api.updateLesson(lesson.id, { status: 'completed' }); navigate(`/lessons/${lesson.id}/record`) } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } }
+  const studentById = new Map(students.map((student) => [student.id, student])); const lessons = lessonData?.items ?? []; const dates = Array.from({ length: 7 }, (_, index) => addDays(range.start, index))
+  return <section className="page-stack"><PageHeader eyebrow={view === 'agenda' ? `${formatDate(range.start)}—${formatDate(range.end)}` : `${anchor.slice(0, 7).replace('-', ' / ')}`} title="課程" action={<button type="button" className="button button-primary" onClick={() => setScheduleOpen(true)}>安排課程</button>} /><div className="planning-tools"><div className="view-toggle" role="group" aria-label="課程檢視"><button type="button" className={view === 'agenda' ? 'active' : ''} onClick={() => setPlanningView('agenda')}>週議程</button><button type="button" className={view === 'month' ? 'active' : ''} onClick={() => setPlanningView('month')}>月曆</button></div><div className="planning-controls"><label>學生<select aria-label="篩選學生" value={studentFilter ?? ''} onChange={(event) => setStudentFilter(event.target.value ? Number(event.target.value) : undefined)}><option value="">全部在學學生</option>{students.map((student) => <option value={student.id} key={student.id}>{student.name}</option>)}</select></label><button type="button" className="button button-secondary compact" onClick={() => move(-1)}>上一{view === 'agenda' ? '週' : '月'}</button><button type="button" className="button button-secondary compact" onClick={() => move(1)}>下一{view === 'agenda' ? '週' : '月'}</button></div></div>{loading && <LoadingCard />}{error && <ErrorCard message={error} onRetry={() => void load()} />}{!loading && !error && view === 'agenda' && <WeeklyAgenda dates={dates} lessons={lessons} students={studentById} onDetail={setDetail} />}{!loading && !error && view === 'month' && <MonthCalendar anchor={anchor} lessons={lessons} students={studentById} onDetail={setDetail} />}{scheduleOpen && <ScheduleLessonSheet students={students} defaultDate={view === 'agenda' ? range.start : anchor} onClose={() => setScheduleOpen(false)} onSave={create} onApiError={onApiError} onAddStudent={() => navigate('/students', { state: { create: true } })} />}{detail && <LessonDetail lesson={detail} student={studentById.get(detail.student_id)} onClose={() => setDetail(null)} onComplete={() => void complete(detail)} onStatus={(status) => void updateStatus(detail, status)} onRecord={() => navigate(`/lessons/${detail.id}/record`)} />}</section>
+}
+function WeeklyAgenda({ dates, lessons, students, onDetail }: { dates: string[]; lessons: Lesson[]; students: Map<number, Student>; onDetail: (lesson: Lesson) => void }) { return <div className="weekly-agenda">{dates.map((date) => { const group = lessons.filter((lesson) => toTaipeiDate(new Date(lesson.start_time)) === date); return <section className="day-group" key={date}><h2>{formatDate(date)}</h2>{group.length === 0 ? <p className="day-empty">尚無安排</p> : <div className="agenda-card">{group.map((lesson) => <button className="agenda-row agenda-button" type="button" key={lesson.id} onClick={() => onDetail(lesson)}><span className="agenda-time">{formatTimeRange(lesson)}</span><span className="agenda-student"><strong>{students.get(lesson.student_id)?.name ?? '學生資料載入中'}</strong><small>{students.get(lesson.student_id)?.subject ?? '未設定科目'} · {lesson.location || '未安排地點'}</small></span><StatusChip status={lesson.status} /><span className="row-arrow" aria-hidden="true">›</span></button>)}</div>}</section> })}</div> }
+function MonthCalendar({ anchor, lessons, students, onDetail }: { anchor: string; lessons: Lesson[]; students: Map<number, Student>; onDetail: (lesson: Lesson) => void }) { const first = `${anchor.slice(0, 7)}-01`; const start = addDays(first, -((new Date(`${first}T12:00:00+08:00`).getUTCDay() + 6) % 7)); const cells = Array.from({ length: 42 }, (_, index) => addDays(start, index)); return <div className="calendar-card"><div className="calendar-weekdays">{['一', '二', '三', '四', '五', '六', '日'].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{cells.map((date) => { const dayLessons = lessons.filter((lesson) => toTaipeiDate(new Date(lesson.start_time)) === date); return <div className={`calendar-day ${date.slice(0, 7) !== anchor.slice(0, 7) ? 'outside' : ''}`} key={date}><span>{Number(date.slice(-2))}</span>{dayLessons.slice(0, 3).map((lesson) => <button type="button" key={lesson.id} onClick={() => onDetail(lesson)}>{formatTime(lesson.start_time)} {students.get(lesson.student_id)?.name ?? '學生'}</button>)}{dayLessons.length > 3 && <small>另有 {dayLessons.length - 3} 堂</small>}</div> })}</div></div> }
+function ScheduleLessonSheet({ students, defaultDate, onClose, onSave, onApiError, onAddStudent }: { students: Student[]; defaultDate: string; onClose: () => void; onSave: (input: LessonInput) => Promise<void>; onApiError: (error: unknown) => boolean; onAddStudent: () => void }) {
+  const [studentId, setStudentId] = useState(''); const [search, setSearch] = useState(''); const [startTime, setStartTime] = useState(`${defaultDate}T14:00`); const [duration, setDuration] = useState(60); const [status, setStatus] = useState<LessonStatus>('scheduled'); const [more, setMore] = useState(false); const [location, setLocation] = useState(''); const [remark, setRemark] = useState(''); const [error, setError] = useState<string | null>(null); const [saving, setSaving] = useState(false); const visibleStudents = students.filter((student) => student.name.includes(search) || student.subject?.includes(search))
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!studentId || !startTime || duration <= 0) { setError('請選擇學生、日期時間與有效的課程長度。'); return }; setSaving(true); setError(null); try { await onSave({ student_id: Number(studentId), start_time: localToTaipeiIso(startTime), duration_minutes: duration, status, location: location.trim() || undefined, remark: remark.trim() || undefined }) } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } finally { setSaving(false) } }
+  return <Sheet title="安排課程" subtitle="在目前檢視中建立一堂課" onClose={onClose}><form className="form-stack sheet-form" onSubmit={submit}><label>搜尋在學學生<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="姓名或科目" /></label><label>學生<select aria-label="選擇學生" value={studentId} onChange={(event) => setStudentId(event.target.value)}><option value="">請選擇學生</option>{visibleStudents.map((student) => <option value={student.id} key={student.id}>{student.name} · {student.subject}</option>)}</select></label>{visibleStudents.length === 0 && <p className="inline-help">找不到可安排的學生。<button type="button" className="text-button" onClick={onAddStudent}>新增學生</button></p>}<label>日期與時間<input type="datetime-local" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label><fieldset><legend>課程長度</legend><div className="duration-options">{[60, 90, 120].map((value) => <button type="button" className={duration === value ? 'active' : ''} onClick={() => setDuration(value)} key={value}>{value} 分鐘</button>)}<label className="custom-duration">自訂<input type="number" min="1" value={duration} onChange={(event) => setDuration(Number(event.target.value))} /> 分鐘</label></div></fieldset><label>狀態<select value={status} onChange={(event) => setStatus(event.target.value as LessonStatus)}><option value="scheduled">已排定</option><option value="completed">已完成（歷史課程）</option><option value="cancelled">已取消（歷史課程）</option><option value="no_show">未到（歷史課程）</option></select></label><button type="button" className="text-button more-toggle" onClick={() => setMore((open) => !open)}>{more ? '收起詳細資料' : '更多詳細資料'}</button>{more && <><label>地點（選填）<input value={location} onChange={(event) => setLocation(event.target.value)} /></label><label>備註（選填）<textarea value={remark} onChange={(event) => setRemark(event.target.value)} /></label></>}{error && <p className="error-text" role="alert">{error}</p>}<div className="form-actions"><button type="button" className="button button-secondary" onClick={onClose}>取消</button><button type="submit" className="button button-primary" disabled={saving}>{saving ? '儲存中…' : '安排課程'}</button></div></form></Sheet>
+}
+function LessonDetail({ lesson, student, onClose, onComplete, onStatus, onRecord }: { lesson: Lesson; student?: Student; onClose: () => void; onComplete: () => void; onStatus: (status: LessonStatus) => void; onRecord: () => void }) { return <Sheet title={student?.name ?? '課程'} subtitle={`${formatDate(lesson.start_time)} ${formatTimeRange(lesson)}`} onClose={onClose}><dl className="detail-list"><div><dt>科目</dt><dd>{student?.subject ?? '—'}</dd></div><div><dt>地點</dt><dd>{lesson.location || '未安排'}</dd></div><div><dt>狀態</dt><dd><StatusChip status={lesson.status} /></dd></div>{lesson.remark && <div><dt>備註</dt><dd>{lesson.remark}</dd></div>}</dl><div className="sheet-actions">{lesson.status === 'scheduled' && <button type="button" className="button button-primary" onClick={onComplete}>完成並撰寫紀錄</button>}{lesson.status === 'completed' && <button type="button" className="button button-primary" onClick={onRecord}>檢視課堂紀錄</button>}<div className="secondary-actions"><span>狀態例外</span><button type="button" className="text-button" onClick={() => onStatus('cancelled')}>標記為已取消</button><button type="button" className="text-button" onClick={() => onStatus('no_show')}>標記為未到</button></div></div></Sheet> }
+
+function LessonRecordPage({ api, onApiError }: { api: TutorApi; onApiError: (error: unknown) => boolean }) {
+  const navigate = useNavigate(); const { lessonId: lessonIdParam } = useParams(); const lessonId = Number(lessonIdParam); const [lesson, setLesson] = useState<Lesson | null>(null); const [student, setStudent] = useState<Student | null>(null); const [note, setNote] = useState<LessonNote | null>(null); const [rawNote, setRawNote] = useState(''); const [teacherNote, setTeacherNote] = useState(''); const [summaryDraft, setSummaryDraft] = useState<LessonSummary | null>(null); const [summarySaved, setSummarySaved] = useState(false); const [feedbackDraft, setFeedbackDraft] = useState(''); const [feedbackSaved, setFeedbackSaved] = useState(false); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading'); const [error, setError] = useState<string | null>(null); const [saveStatus, setSaveStatus] = useState('尚未建立紀錄'); const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'draft' | 'saved' | 'error'>('idle'); const [feedbackStatus, setFeedbackStatus] = useState<'idle' | 'loading' | 'draft' | 'saved' | 'error'>('idle'); const [copied, setCopied] = useState(false); const lastSavedRaw = useRef('')
+  const load = useCallback(async () => { if (!Number.isInteger(lessonId) || lessonId <= 0) { setLoadState('error'); setError('找不到這堂課。'); return }; setLoadState('loading'); setError(null); try { const fetchedLesson = await api.getLesson(lessonId); const fetchedStudent = await api.getStudent(fetchedLesson.student_id); let fetchedNote: LessonNote | null = null; try { fetchedNote = await api.getLessonNote(lessonId) } catch (requestError) { if (!isApiError(requestError, 404)) throw requestError }; setLesson(fetchedLesson); setStudent(fetchedStudent); setNote(fetchedNote); const raw = fetchedNote?.raw_note === EMPTY_RECORD_VALUE ? '' : fetchedNote?.raw_note ?? ''; setRawNote(raw); lastSavedRaw.current = raw; setTeacherNote(fetchedNote?.teacher_note ?? ''); setSummaryDraft(fetchedNote?.ai_summary ?? null); setSummarySaved(Boolean(fetchedNote?.ai_summary)); setAiStatus(fetchedNote?.ai_summary ? 'saved' : 'idle'); setFeedbackDraft(fetchedNote?.parent_feedback ?? ''); setFeedbackSaved(Boolean(fetchedNote?.parent_feedback)); setFeedbackStatus(fetchedNote?.parent_feedback ? 'saved' : 'idle'); setSaveStatus(fetchedNote ? '自動儲存已啟用' : '尚未建立紀錄'); setLoadState('ready') } catch (requestError) { if (!onApiError(requestError)) { setError(errorMessage(requestError)); setLoadState('error') } } }, [api, lessonId, onApiError])
+  useEffect(() => { const timer = window.setTimeout(() => { void load() }, 0); return () => window.clearTimeout(timer) }, [load]); useEffect(() => { if (!note || !rawNote.trim() || rawNote === lastSavedRaw.current) return; const timer = window.setTimeout(() => { setSaveStatus('儲存中…'); void api.updateLessonNote(lessonId, { raw_note: rawNote.trim() }).then((saved) => { lastSavedRaw.current = saved.raw_note ?? rawNote.trim(); setNote(saved); setSaveStatus(`已自動儲存 ${formatTime(new Date().toISOString())}`) }).catch((requestError: unknown) => { if (!onApiError(requestError)) setSaveStatus('儲存失敗，請再試一次') }) }, 800); return () => window.clearTimeout(timer) }, [api, lessonId, note, onApiError, rawNote])
+  const hasUnsavedDraft = Boolean((summaryDraft && !summarySaved) || (feedbackDraft && !feedbackSaved)); const blocker = useBlocker(hasUnsavedDraft)
+  const updateSummary = (key: keyof LessonSummary, value: string) => { setSummaryDraft((current) => ({ ...(current ?? emptySummary()), [key]: key === 'overview' ? value : value.split('\n').map((item) => item.trim()).filter(Boolean) } as LessonSummary)); setSummarySaved(false); setAiStatus('draft') }
+  async function startRecord() { try { const saved = await api.createLessonNote(lessonId, { raw_note: EMPTY_RECORD_VALUE }); setNote(saved); setSaveStatus('自動儲存已啟用') } catch (requestError) { if (!onApiError(requestError)) setError(errorMessage(requestError)) } }
+  async function generateSummary() { if (!note || !rawNote.trim()) { setAiStatus('error'); setError('請先開始課堂紀錄並輸入原始筆記，再生成摘要。'); return }; if (rawNote.trim() !== lastSavedRaw.current) { setAiStatus('error'); setError('原始筆記仍在自動儲存，完成後即可生成摘要。'); return }; setAiStatus('loading'); setError(null); try { const draft = await api.generateSummary(lessonId); setSummaryDraft(draft); setSummarySaved(false); setAiStatus('draft') } catch (requestError) { if (!onApiError(requestError)) { setAiStatus('error'); setError(errorMessage(requestError)) } } }
+  async function saveSummary(): Promise<boolean> { if (!note || !summaryDraft || !summaryDraft.overview.trim()) { setAiStatus('error'); setError('請先填寫摘要概覽。'); return false }; try { const saved = await api.updateLessonNote(lessonId, { ai_summary: summaryDraft, teacher_note: teacherNote.trim() || undefined }); setNote(saved); setSummaryDraft(saved.ai_summary); setSummarySaved(true); setAiStatus('saved'); return true } catch (requestError) { if (!onApiError(requestError)) { setAiStatus('error'); setError(errorMessage(requestError)) }; return false } }
+  async function generateFeedback() { if (!summarySaved) return; setFeedbackStatus('loading'); setError(null); try { const draft = await api.generateFeedback(lessonId); setFeedbackDraft(draft); setFeedbackSaved(false); setFeedbackStatus('draft') } catch (requestError) { if (!onApiError(requestError)) { setFeedbackStatus('error'); setError(errorMessage(requestError)) } } }
+  async function saveFeedback(): Promise<boolean> { if (!note || !feedbackDraft.trim()) { setFeedbackStatus('error'); setError('請輸入家長回饋內容。'); return false }; try { const saved = await api.updateLessonNote(lessonId, { parent_feedback: feedbackDraft.trim() }); setNote(saved); setFeedbackDraft(saved.parent_feedback ?? ''); setFeedbackSaved(true); setFeedbackStatus('saved'); return true } catch (requestError) { if (!onApiError(requestError)) { setFeedbackStatus('error'); setError(errorMessage(requestError)) }; return false } }
+  async function saveDraftsThenLeave() { const saved = await Promise.all([(summaryDraft && !summarySaved) ? saveSummary() : Promise.resolve(true), (feedbackDraft && !feedbackSaved) ? saveFeedback() : Promise.resolve(true)]); if (saved.every(Boolean)) blocker.proceed?.() }
+  function discardDraftsThenLeave() { setSummaryDraft(note?.ai_summary ?? null); setSummarySaved(Boolean(note?.ai_summary)); setFeedbackDraft(note?.parent_feedback ?? ''); setFeedbackSaved(Boolean(note?.parent_feedback)); blocker.proceed?.() }
+  if (loadState === 'loading') return <section className="record-page"><LoadingCard /></section>; if (loadState === 'error' || !lesson || !student) return <section className="record-page"><ErrorCard message={error || '找不到這堂課。'} onRetry={() => void load()} /></section>
+  return <section className="record-page page-stack"><PageHeader eyebrow={`${formatDate(lesson.start_time)} ${formatTimeRange(lesson)} · ${student.subject || '未設定科目'}`} title={`${student.name}的課堂紀錄`} action={<button type="button" className="button button-secondary" onClick={() => navigate('/lessons')}>返回課程</button>} />{error && <div className="error-panel" role="alert"><strong>需要注意</strong><p>{error}</p></div>}<RecordSection number="1" title="原始筆記" status={saveStatus}>{!note ? <div className="not-started"><p>先確認要建立這堂課的紀錄，再開始輸入原始筆記。</p><button type="button" className="button button-primary" onClick={() => void startRecord()}>開始課堂紀錄</button></div> : <textarea className="raw-note" aria-label="原始筆記" value={rawNote} onChange={(event) => setRawNote(event.target.value)} placeholder="記下今天實際發生的學習內容、反應與下一步…" />}</RecordSection><RecordSection number="2" title="課堂摘要" status={aiStatus === 'saved' ? '已儲存' : aiStatus === 'loading' ? '生成中…' : aiStatus === 'draft' ? '草稿未儲存' : aiStatus === 'error' ? '需要處理' : '—'} tone={aiStatus}>{!summaryDraft && <div className="ai-empty"><p>摘要會根據已儲存的原始筆記生成，或你可以直接自行撰寫。</p><div><button type="button" className="button button-primary" onClick={() => void generateSummary()}>生成 AI 摘要</button><button type="button" className="button button-secondary" onClick={() => { setSummaryDraft(emptySummary()); setSummarySaved(false); setAiStatus('draft') }}>自行撰寫</button></div></div>}{aiStatus === 'loading' && <div className="skeleton-lines" aria-label="摘要生成中"><span /><span /><span /></div>}{summaryDraft && aiStatus !== 'loading' && <SummaryEditor summary={summaryDraft} teacherNote={teacherNote} onSummaryChange={updateSummary} onTeacherNote={(value) => { setTeacherNote(value); setSummarySaved(false); setAiStatus('draft') }} />}{summaryDraft && aiStatus !== 'loading' && <div className="record-actions"><p>{summarySaved ? '已存入這堂課的紀錄' : '儲存後才會成為課堂紀錄的一部分'}</p><button type="button" className="button button-primary" onClick={() => void saveSummary()}>{summarySaved ? '更新摘要' : '儲存摘要'}</button></div>}</RecordSection><RecordSection number="3" title="家長回饋" status={feedbackStatus === 'saved' ? '已儲存' : feedbackStatus === 'loading' ? '生成中…' : feedbackStatus === 'draft' ? '草稿未儲存' : feedbackStatus === 'error' ? '需要處理' : '—'} tone={feedbackStatus}>{!summarySaved ? <p className="locked-copy">請先儲存課堂摘要，才能生成家長回饋。你仍可隨時回到上一個步驟自行整理摘要。</p> : !feedbackDraft && feedbackStatus !== 'draft' ? <div className="ai-empty"><p>這是可選步驟。TutorFlow 只會提供可複製的內容，不會直接傳送給家長。</p><div><button type="button" className="button button-primary" onClick={() => void generateFeedback()}>生成家長回饋</button><button type="button" className="button button-secondary" onClick={() => { setFeedbackDraft(''); setFeedbackSaved(false); setFeedbackStatus('draft') }}>自行撰寫</button></div></div> : <><textarea className="feedback-note" aria-label="家長回饋" value={feedbackDraft} onChange={(event) => { setFeedbackDraft(event.target.value); setFeedbackSaved(false); setFeedbackStatus('draft'); setCopied(false) }} placeholder="輸入給家長的回饋內容…" /><div className="record-actions"><p>{feedbackSaved ? '已存入這堂課的紀錄' : '儲存後才會成為課堂紀錄的一部分'}</p><div><button type="button" className="button button-secondary" onClick={() => void navigator.clipboard?.writeText(feedbackDraft).then(() => setCopied(true))}>{copied ? '已複製到剪貼簿' : '複製內容'}</button><button type="button" className="button button-primary" onClick={() => void saveFeedback()}>{feedbackSaved ? '更新回饋' : '儲存回饋'}</button></div></div></>}</RecordSection>{blocker.state === 'blocked' && <Dialog title="離開未儲存的 AI 草稿？" onClose={() => blocker.reset?.()}><p>AI 草稿不會自動存入課堂紀錄。你可以明確儲存、捨棄，或繼續編輯。</p><div className="dialog-actions"><button type="button" className="button button-secondary" onClick={() => blocker.reset?.()}>繼續編輯</button><button type="button" className="button button-secondary" onClick={discardDraftsThenLeave}>捨棄草稿</button><button type="button" className="button button-primary" onClick={() => void saveDraftsThenLeave()}>儲存草稿</button></div></Dialog>}</section>
+}
+function RecordSection({ number, title, status, tone = 'idle', children }: { number: string; title: string; status: string; tone?: string; children: ReactNode }) { return <section className="record-section"><header><div><span className={`step-badge ${number === '3' ? 'soft' : ''}`}>{number}</span><h2>{title}</h2></div><span className={`save-status ${tone}`}>{status}</span></header>{children}</section> }
+function SummaryEditor({ summary, teacherNote, onSummaryChange, onTeacherNote }: { summary: LessonSummary; teacherNote: string; onSummaryChange: (key: keyof LessonSummary, value: string) => void; onTeacherNote: (value: string) => void }) { const labels: Array<[Exclude<keyof LessonSummary, 'overview'>, string]> = [['learning_progress', '學習進度'], ['strengths', '表現優勢'], ['difficulties', '需要留意'], ['next_steps', '下一步建議']]; return <div className="summary-editor"><label>摘要概覽<textarea value={summary.overview} onChange={(event) => onSummaryChange('overview', event.target.value)} /></label>{labels.map(([key, label]) => <label key={key}>{label}<textarea value={summary[key].join('\n')} onChange={(event) => onSummaryChange(key, event.target.value)} placeholder="每行一項" /></label>)}<label>教師補充（選填）<textarea value={teacherNote} onChange={(event) => onTeacherNote(event.target.value)} /></label></div> }
