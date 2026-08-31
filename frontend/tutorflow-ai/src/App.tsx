@@ -110,15 +110,16 @@ export default function App({ api }: AppProps) {
 
 function TutorFlowApp({ api }: AppProps) {
   const [session, setSession] = useState<Session | null>(loadSession)
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null)
   const defaultApi = useMemo(() => createTutorApi(() => session?.accessToken ?? null), [session?.accessToken])
   const client = api ?? defaultApi
-  const logout = useCallback(() => { window.sessionStorage.removeItem(SESSION_KEY); setSession(null) }, [])
-  const handleApiError = useCallback((error: unknown) => { if (isApiError(error, 401)) { logout(); return true }; return false }, [logout])
-  if (!session) return <AuthPage api={client} onAuthenticated={(result) => setSession(saveSession(result))} />
+  const logout = useCallback((notice?: string) => { window.sessionStorage.removeItem(SESSION_KEY); setSessionNotice(notice ?? null); setSession(null) }, [])
+  const handleApiError = useCallback((error: unknown) => { if (isApiError(error, 401)) { logout('工作階段已結束，請重新登入。'); return true }; return false }, [logout])
+  if (!session) return <AuthPage api={client} notice={sessionNotice} onAuthenticated={(result) => { setSessionNotice(null); setSession(saveSession(result)) }} />
   return <AppShell session={session} onLogout={logout}><Routes><Route path="/" element={<TodayPage api={client} onApiError={handleApiError} />} /><Route path="/students" element={<StudentsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons" element={<LessonsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons/:lessonId/record" element={<LessonRecordPage api={client} onApiError={handleApiError} tutorId={session.user.id} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></AppShell>
 }
 
-function AuthPage({ api, onAuthenticated }: { api: TutorApi; onAuthenticated: (result: AuthResult) => void }) {
+function AuthPage({ api, notice, onAuthenticated }: { api: TutorApi; notice: string | null; onAuthenticated: (result: AuthResult) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false)
@@ -128,7 +129,7 @@ function AuthPage({ api, onAuthenticated }: { api: TutorApi; onAuthenticated: (r
     catch (requestError) { setError(errorMessage(requestError, mode === 'login' ? '帳號或密碼不正確。' : '無法建立帳號，請再試一次。')) }
     finally { setPending(false) }
   }
-  return <main className="auth-page grid min-h-screen place-items-center p-6"><section className="auth-card" aria-labelledby="auth-title"><BrandMark className="auth-brand" /><div className="auth-copy"><p className="eyebrow">TODAY-FIRST WORKSPACE</p><h1 id="auth-title">{mode === 'login' ? '登入 TutorFlow' : '建立 TutorFlow 帳號'}</h1><p>{mode === 'login' ? '回到今天的教學工作。' : '用最少的步驟建立你的教學工作區。'}</p></div><div className="auth-tabs" role="tablist" aria-label="帳號操作"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')} role="tab" aria-selected={mode === 'login'}>登入</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')} role="tab" aria-selected={mode === 'register'}>建立帳號</button></div><form className="form-stack" onSubmit={submit} noValidate>{mode === 'register' && <label>姓名<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>}<label>電子信箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密碼<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required /></label>{error && <p className="error-text" role="alert">{error}</p>}<button className="button button-primary" type="submit" disabled={pending}>{pending ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form></section></main>
+  return <main className="auth-page grid min-h-screen place-items-center p-6"><section className="auth-card" aria-labelledby="auth-title"><BrandMark className="auth-brand" /><div className="auth-copy"><p className="eyebrow">TODAY-FIRST WORKSPACE</p><h1 id="auth-title">{mode === 'login' ? '登入 TutorFlow' : '建立 TutorFlow 帳號'}</h1><p>{mode === 'login' ? '回到今天的教學工作。' : '用最少的步驟建立你的教學工作區。'}</p></div><div className="auth-tabs" role="tablist" aria-label="帳號操作"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')} role="tab" aria-selected={mode === 'login'}>登入</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')} role="tab" aria-selected={mode === 'register'}>建立帳號</button></div><form className="form-stack" onSubmit={submit} noValidate>{notice && <p className="error-text" role="alert">{notice}</p>}{mode === 'register' && <label>姓名<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required /></label>}<label>電子信箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label><label>密碼<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required /></label>{error && <p className="error-text" role="alert">{error}</p>}<button className="button button-primary" type="submit" disabled={pending}>{pending ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form></section></main>
 }
 
 function AppShell({ session, onLogout, children }: { session: Session; onLogout: () => void; children: ReactNode }) {

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type Lesson, type LessonNote, type LessonSummary, type Paginated, type Student, type TutorApi } from './api'
@@ -87,6 +87,113 @@ describe('TutorFlow application', () => {
     await waitFor(() => expect(api.listLessons).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 20 })))
     expect(await screen.findByText('16:00–17:00')).toBeVisible()
     expect(screen.queryByRole('button', { name: '載入更多課程' })).not.toBeInTheDocument()
+  })
+
+  it('switches the same Lesson planning data between the Weekly agenda and Month calendar', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons')
+    const user = userEvent.setup()
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+    const today = `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}-${parts.find((part) => part.type === 'day')?.value}`
+    const plannedLesson: Lesson = { ...lesson, status: 'scheduled', start_time: `${today}T06:00:00Z` }
+    const api = createApi({ listLessons: vi.fn().mockResolvedValue(paged([plannedLesson])), listStudents: vi.fn().mockResolvedValue(paged([student])) })
+    render(<App api={api} />)
+    expect(await screen.findByRole('button', { name: /14:00.*陳柏睿/ })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '月曆' }))
+    await waitFor(() => expect(api.listLessons).toHaveBeenCalledTimes(2))
+    const calendarLesson = await screen.findByRole('button', { name: '14:00 陳柏睿' })
+    await user.click(calendarLesson)
+    const detailSheet = await screen.findByRole('dialog', { name: '陳柏睿' })
+    expect(within(detailSheet).getByText('物理')).toBeVisible()
+    await user.click(within(detailSheet).getByRole('button', { name: '關閉' }))
+    expect(screen.getByRole('button', { name: '14:00 陳柏睿' })).toBeVisible()
+  })
+
+  it('keeps cancelled and No-show as secondary Lesson status exceptions without delete', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons')
+    const user = userEvent.setup()
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+    const today = `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}-${parts.find((part) => part.type === 'day')?.value}`
+    const plannedLesson: Lesson = { ...lesson, status: 'scheduled', start_time: `${today}T06:00:00Z` }
+    const cancelledLesson: Lesson = { ...plannedLesson, status: 'cancelled' }
+    const api = createApi({ listLessons: vi.fn().mockResolvedValue(paged([plannedLesson])), listStudents: vi.fn().mockResolvedValue(paged([student])), updateLesson: vi.fn().mockResolvedValue(cancelledLesson) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: /14:00.*陳柏睿/ }))
+    expect(screen.getByText('狀態例外')).toBeVisible()
+    expect(screen.getByRole('button', { name: '標記為已取消' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '標記為未到' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /刪除/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '標記為已取消' }))
+    await waitFor(() => expect(api.updateLesson).toHaveBeenCalledWith(31, { status: 'cancelled' }))
+    expect(screen.getByText('已取消')).toBeVisible()
+  })
+
+  it('shows the defined Today loading state while the Tutor data is pending', async () => {
+    setSession()
+    const pending = () => new Promise<never>(() => {})
+    const api = createApi({ getDashboard: vi.fn(pending), listLessons: vi.fn(pending), listStudents: vi.fn(pending) })
+    render(<App api={api} />)
+    expect(await screen.findByText('載入中…')).toBeVisible()
+  })
+
+  it('supports the release Teaching loop from sign in through an explicitly saved AI summary', async () => {
+    const user = userEvent.setup()
+    const createdStudent = { ...student, name: '林語晴' }
+    let hasCreatedStudent = false
+    let scheduledLesson: Lesson | null = null
+    let lessonRecord: LessonNote = { id: 1, lesson_id: 31, raw_note: '開始記錄', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const generatedSummary = { overview: '已完成函數練習。', learning_progress: ['能解一元二次方程式'], strengths: [], difficulties: [], next_steps: [] }
+    const api = createApi({
+      login: vi.fn().mockResolvedValue(authResult),
+      getDashboard: vi.fn().mockResolvedValue({ date: '2026-08-30', month: '2026-08', today_lessons_count: 0, active_students_count: 0 }),
+      listStudents: vi.fn().mockImplementation(() => Promise.resolve(paged(hasCreatedStudent ? [createdStudent] : []))),
+      createStudent: vi.fn().mockImplementation(() => { hasCreatedStudent = true; return Promise.resolve(createdStudent) }),
+      listLessons: vi.fn().mockImplementation(() => Promise.resolve(paged(scheduledLesson ? [scheduledLesson] : []))),
+      createLesson: vi.fn().mockImplementation((input) => { scheduledLesson = { ...lesson, student_id: input.student_id, start_time: input.start_time, duration_minutes: input.duration_minutes, status: input.status ?? 'scheduled', location: input.location ?? null, remark: input.remark ?? null }; return Promise.resolve(scheduledLesson) }),
+      updateLesson: vi.fn().mockImplementation((_lessonId, input) => { scheduledLesson = { ...(scheduledLesson ?? lesson), ...input }; return Promise.resolve(scheduledLesson) }),
+      getLesson: vi.fn().mockImplementation(() => Promise.resolve(scheduledLesson ?? lesson)),
+      getStudent: vi.fn().mockResolvedValue(createdStudent),
+      getLessonNote: vi.fn().mockRejectedValue(new ApiError(404, 'not found')),
+      createLessonNote: vi.fn().mockImplementation((_lessonId, input) => { lessonRecord = { ...lessonRecord, raw_note: input.raw_note }; return Promise.resolve(lessonRecord) }),
+      updateLessonNote: vi.fn().mockImplementation((_lessonId, input) => { lessonRecord = { ...lessonRecord, ...input }; return Promise.resolve(lessonRecord) }),
+      generateSummary: vi.fn().mockResolvedValue(generatedSummary),
+    })
+    render(<App api={api} />)
+
+    await user.type(screen.getByLabelText('電子信箱'), tutor.email)
+    await user.type(screen.getByLabelText('密碼'), 'password123')
+    await user.click(screen.getByRole('button', { name: '登入' }))
+    expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
+
+    await user.click(screen.getAllByRole('link', { name: '學生' })[0])
+    await user.click(await screen.findByRole('button', { name: '新增學生' }))
+    const studentSheet = await screen.findByRole('dialog', { name: '新增學生' })
+    await user.type(within(studentSheet).getByLabelText('姓名'), createdStudent.name)
+    await user.type(within(studentSheet).getByLabelText('學校'), createdStudent.school ?? '')
+    await user.type(within(studentSheet).getByLabelText('年級'), createdStudent.grade ?? '')
+    await user.type(within(studentSheet).getByLabelText('科目'), createdStudent.subject ?? '')
+    await user.click(within(studentSheet).getByRole('button', { name: '儲存學生' }))
+    await waitFor(() => expect(api.createStudent).toHaveBeenCalledTimes(1))
+
+    await user.click(screen.getAllByRole('link', { name: '課程' })[0])
+    await user.click(await screen.findByRole('button', { name: '安排課程' }))
+    const scheduleSheet = await screen.findByRole('dialog', { name: '安排課程' })
+    await user.selectOptions(within(scheduleSheet).getByLabelText('選擇學生'), String(createdStudent.id))
+    await user.click(within(scheduleSheet).getByRole('button', { name: '安排課程' }))
+    await waitFor(() => expect(api.createLesson).toHaveBeenCalledWith(expect.objectContaining({ student_id: createdStudent.id, status: 'scheduled' })))
+
+    const agendaLesson = await screen.findByRole('button', { name: /林語晴/ })
+    await user.click(agendaLesson)
+    const detailSheet = await screen.findByRole('dialog', { name: '林語晴' })
+    await user.click(within(detailSheet).getByRole('button', { name: '完成並撰寫紀錄' }))
+    expect(await screen.findByRole('heading', { name: '林語晴的課堂紀錄' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: '開始課堂紀錄' }))
+    await user.type(screen.getByLabelText('原始筆記'), '今天完成函數練習。')
+    await waitFor(() => expect(api.updateLessonNote).toHaveBeenCalledWith(31, { raw_note: '今天完成函數練習。' }), { timeout: 1600 })
+    await user.click(screen.getByRole('button', { name: '生成 AI 摘要' }))
+    expect(await screen.findByText('AI 草稿未儲存')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '儲存摘要' }))
+    await waitFor(() => expect(api.updateLessonNote).toHaveBeenCalledWith(31, expect.objectContaining({ ai_summary: generatedSummary })))
   })
 
   it('keeps raw notes autosaved while AI content remains an explicit Tutor save', async () => {
@@ -328,6 +435,7 @@ describe('TutorFlow application', () => {
     const api = createApi({ getDashboard: vi.fn().mockRejectedValue(new ApiError(401, 'expired')) })
     render(<App api={api} />)
     expect(await screen.findByRole('heading', { name: '登入 TutorFlow' })).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent('工作階段已結束，請重新登入。')
     expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
   })
 })
