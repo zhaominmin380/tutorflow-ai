@@ -13,9 +13,10 @@
 .sidebar-user strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .sidebar-user small { color: var(--ink-muted); }
 .avatar { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 99px; background: var(--brand-accent); color: var(--text-on-nav-active); font-size: 12px; font-weight: 700; }
-.workspace { width: 100%; max-width: 1180px; padding: 30px 40px 72px; }
+.workspace { width: 100%; padding: 30px 40px 72px; }
 .mobile-nav { display: none; }
 .page-stack { display: flex; flex-direction: column; gap: 22px; }
+.dashboard-page { width: 100%; max-width: 1200px; margin-inline: auto; }
 .compact-stack { gap: 20px; }
 .record-page { width: 100%; max-width: 760px; }
 .page-header { gap: 24px; }
@@ -28,10 +29,11 @@
 .button-secondary { color: var(--text-on-button-secondary); border-color: var(--border-strong); background: var(--surface-raised); }.button-secondary:hover { background: var(--neutral-button-hover); }
 .button.compact { padding: 9px 15px; font-size: 13.5px; white-space: nowrap; }
 .text-button { border: 0; padding: 0; color: var(--brand); background: transparent; font-size: 12px; white-space: nowrap; }.text-button:hover { color: var(--brand-hover); text-decoration: underline; }
-.auth-page { background: var(--surface-app); }
-.auth-card { display: flex; width: min(100%, 460px); flex-direction: column; gap: 24px; padding: 34px; border: 1px solid var(--border-default); border-radius: 16px; background: var(--surface-card); }
-.auth-copy { display: flex; flex-direction: column; gap: 7px; }.auth-copy h1 { font-size: 26px; }.auth-copy p:last-child { color: var(--ink-tertiary); font-size: 14px; line-height: 1.7; }
-.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border-subtle); }.auth-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 9px; color: var(--ink-muted); background: transparent; }.auth-tabs button.active { border-bottom-color: var(--brand); color: var(--ink); font-weight: 700; }
+.auth-page { display: grid; min-height: 100vh; place-items: center; padding: clamp(20px, 3.5vw, 48px); background: radial-gradient(circle at 20% 0%, var(--surface-raised), var(--surface-app) 56%); }
+.auth-card { display: flex; width: min(100%, 460px); flex-direction: column; padding: 34px; border: 1px solid var(--border-subtle); border-radius: 16px; box-shadow: 0 18px 38px rgb(8 6 18 / 12%); background: color-mix(in srgb, var(--surface-card) 94%, white); }
+.auth-brand { align-self: center; padding-top: 8px; }.auth-copy { display: flex; width: 100%; flex-direction: column; gap: 7px; margin-top: 32px; }.auth-copy .eyebrow { color: var(--brand); font-size: 12px; font-weight: 500; letter-spacing: .14em; }.auth-copy .eyebrow::after { display: block; width: 38px; height: 2px; margin-top: 10px; background: var(--brand); content: ''; }.auth-copy h1 { color: var(--ink-secondary); font-size: 26px; font-weight: 500; letter-spacing: .03em; }.auth-copy p:last-child { color: var(--ink-tertiary); font-size: 14px; line-height: 1.7; }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; margin-top: 30px; border-bottom: 1px solid var(--border-strong); }.auth-tabs button { display: flex; min-height: 52px; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0; padding: 9px 10px; color: var(--ink-muted); background: transparent; font-size: 14px; letter-spacing: .06em; }.auth-tabs button.active { z-index: 1; margin-bottom: -1px; border-color: var(--brand); border-bottom: 3px solid var(--brand); color: var(--brand-hover); background: color-mix(in srgb, var(--surface-raised) 62%, var(--brand-soft)); font-weight: 700; }.auth-tab-leaf { width: 18px; height: 21px; object-fit: contain; }.auth-tab-person { position: relative; width: 20px; height: 22px; }.auth-tab-person::before { position: absolute; top: 0; left: 6px; width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 50%; content: ''; }.auth-tab-person::after { position: absolute; bottom: 0; left: 2px; width: 16px; height: 9px; border: 1.5px solid currentColor; border-radius: 11px 11px 0 0; border-bottom: 0; content: ''; }
+.auth-form { gap: 14px; margin-top: 28px; }.auth-form > label { gap: 7px; color: var(--ink-secondary); font-size: 13px; letter-spacing: .06em; }.auth-form input { min-height: 46px; border-color: var(--border-strong); border-radius: 10px; padding: 10px 12px; background: rgb(255 255 255 / 56%); font-size: 14px; }.auth-form input::placeholder { color: var(--ink-faint); }.auth-form .button-primary { min-height: 46px; margin-top: 8px; border-radius: 10px; background: linear-gradient(108deg, var(--brand-hover), var(--brand)); box-shadow: 0 6px 12px rgb(165 87 87 / 22%); font-size: 16px; letter-spacing: .12em; }.auth-form .button-primary:hover { background: linear-gradient(108deg, var(--brand-hover), var(--brand-hover)); }
 .form-stack { display: flex; flex-direction: column; gap: 14px; }
 .form-stack > label, .summary-editor > label, .planning-controls label, .filter-panel label { display: flex; flex-direction: column; gap: 7px; color: var(--ink-muted); font-size: 12px; }
 .form-actions, .dialog-actions, .record-actions, .sheet-actions { display: flex; justify-content: flex-end; gap: 10px; }
