@@ -64,6 +64,20 @@ describe('TutorFlow application', () => {
     await waitFor(() => expect(api.createStudent).toHaveBeenCalledWith({ name: '陳柏睿', school: '建國中學', grade: '高二', subject: '物理', hourly_rate: undefined, note: undefined }))
   })
 
+  it('replaces Student detail with the editor as soon as the Tutor clicks Edit', async () => {
+    setSession(); window.history.pushState({}, '', '/students')
+    const user = userEvent.setup()
+    const api = createApi({ listStudents: vi.fn().mockResolvedValue(paged([student])) })
+    render(<App api={api} />)
+
+    await user.click(await screen.findByRole('button', { name: /陳柏睿/ }))
+    const detail = await screen.findByRole('dialog', { name: '陳柏睿' })
+    await user.click(within(detail).getByRole('button', { name: '編輯學生' }))
+
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.getByRole('dialog', { name: '編輯學生' })).toBeVisible()
+  })
+
   it('keeps entered Student details and names the invalid field after a 422 response', async () => {
     setSession(); window.history.pushState({}, '', '/students')
     const user = userEvent.setup()
