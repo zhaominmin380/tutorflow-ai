@@ -127,6 +127,34 @@ describe('TutorFlow application', () => {
     expect(screen.getByText('已取消')).toBeVisible()
   })
 
+  it('lets the Tutor make short scheduling edits from Lesson detail while Location and Remark remain read-only', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons')
+    const user = userEvent.setup()
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+    const today = `${parts.find((part) => part.type === 'year')?.value}-${parts.find((part) => part.type === 'month')?.value}-${parts.find((part) => part.type === 'day')?.value}`
+    const plannedLesson: Lesson = { ...lesson, status: 'scheduled', start_time: `${today}T06:00:00Z`, remark: '帶計算機' }
+    const updatedLesson: Lesson = { ...plannedLesson, start_time: `${today}T15:30:00+08:00`, duration_minutes: 90 }
+    const api = createApi({ listLessons: vi.fn().mockResolvedValueOnce(paged([plannedLesson])).mockResolvedValue(paged([updatedLesson])), listStudents: vi.fn().mockResolvedValue(paged([student])), updateLesson: vi.fn().mockResolvedValue(updatedLesson) })
+    render(<App api={api} />)
+
+    await user.click(await screen.findByRole('button', { name: /14:00.*陳柏睿/ }))
+    const detail = await screen.findByRole('dialog', { name: '陳柏睿' })
+    expect(within(detail).getByText('大安區')).toBeVisible()
+    expect(within(detail).getByText('帶計算機')).toBeVisible()
+    await user.click(within(detail).getByRole('button', { name: '編輯課程' }))
+
+    const editor = await screen.findByRole('dialog', { name: '編輯課程' })
+    expect(within(editor).queryByLabelText('地點')).not.toBeInTheDocument()
+    expect(within(editor).queryByLabelText('備註')).not.toBeInTheDocument()
+    fireEvent.change(within(editor).getByLabelText('日期與時間'), { target: { value: `${today}T15:30` } })
+    fireEvent.change(within(editor).getByLabelText('自訂課程長度'), { target: { value: '90' } })
+    await user.click(within(editor).getByRole('button', { name: '儲存變更' }))
+
+    await waitFor(() => expect(api.updateLesson).toHaveBeenCalledWith(31, { start_time: `${today}T15:30:00+08:00`, duration_minutes: 90 }))
+    expect(screen.queryByRole('dialog', { name: '編輯課程' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /15:30.*陳柏睿/ })).toBeVisible()
+  })
+
   it('shows the defined Today loading state while the Tutor data is pending', async () => {
     setSession()
     const pending = () => new Promise<never>(() => {})
