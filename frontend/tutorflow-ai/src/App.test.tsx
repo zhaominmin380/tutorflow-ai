@@ -19,7 +19,7 @@ describe('TutorFlow application', () => {
 
   it('shows sign in before a Tutor has a session', () => {
     render(<App api={createApi()} />)
-    expect(screen.getByRole('heading', { name: '登入 TutorFlow' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
     expect(screen.getByRole('button', { name: '登入' })).toBeVisible()
     expect(screen.getByRole('tab', { name: '建立帳號' })).toBeVisible()
   })
@@ -35,6 +35,18 @@ describe('TutorFlow application', () => {
     expect(screen.getByRole('heading', { name: '先建立第一位學生' })).toBeVisible()
     expect(api.login).toHaveBeenCalledWith({ email: tutor.email, password: 'password123' })
     expect(window.sessionStorage.getItem('tutorflow.session')).toContain('session-token')
+  })
+
+  it('returns the Tutor to sign in without rendering the logout click event', async () => {
+    setSession()
+    const user = userEvent.setup()
+    const api = createApi({ getDashboard: vi.fn().mockResolvedValue({ date: '2026-08-30', month: '2026-08', today_lessons_count: 0, active_students_count: 0 }), listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])) })
+    render(<App api={api} />)
+
+    await user.click(await screen.findByRole('button', { name: '登出' }))
+
+    expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
+    expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
   })
 
   it('creates a Student from the directory and sends the Tutor-entered details to the shared API seam', async () => {
@@ -451,7 +463,7 @@ describe('TutorFlow application', () => {
     render(<App api={api} />)
     await user.click(await screen.findByRole('button', { name: '開始課堂紀錄' }))
     await user.type(await screen.findByLabelText('原始筆記'), rawNote)
-    expect(await screen.findByRole('heading', { name: '登入 TutorFlow' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
     await user.type(screen.getByLabelText('電子信箱'), tutor.email)
     await user.type(screen.getByLabelText('密碼'), 'password123')
     await user.click(screen.getByRole('button', { name: '登入' }))
@@ -462,7 +474,7 @@ describe('TutorFlow application', () => {
     setSession()
     const api = createApi({ getDashboard: vi.fn().mockRejectedValue(new ApiError(401, 'expired')) })
     render(<App api={api} />)
-    expect(await screen.findByRole('heading', { name: '登入 TutorFlow' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('工作階段已結束，請重新登入。')
     expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
   })
