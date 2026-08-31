@@ -1,7 +1,7 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, type Lesson, type LessonNote, type Paginated, type Student, type TutorApi } from './api'
+import { ApiError, type Lesson, type LessonNote, type LessonSummary, type Paginated, type Student, type TutorApi } from './api'
 import App from './App'
 
 const tutor = { id: 7, email: 'tutor@example.com', name: '許雅涵', created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
@@ -104,6 +104,174 @@ describe('TutorFlow application', () => {
     await waitFor(() => expect(api.updateLessonNote).toHaveBeenCalledWith(31, expect.objectContaining({ ai_summary: expect.objectContaining({ overview: '完成二次函數的基礎練習。' }) })))
     await user.click(screen.getByRole('button', { name: '自行撰寫' }))
     expect(await screen.findByLabelText('家長回饋')).toBeVisible()
+  })
+
+  it.each([
+    [409, '請先儲存原始筆記，再生成 AI 摘要。'],
+    [502, 'AI 服務暫時發生問題，尚未產生任何內容。你可以重試或自行撰寫。'],
+    [503, 'AI 服務目前無法使用或尚未設定。請稍後重試，或自行撰寫。'],
+    [504, 'AI 生成逾時，尚未產生任何內容。請重試或自行撰寫。'],
+  ])('offers retry and manual summary paths after AI generation fails with %i', async (status, message) => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), generateSummary: vi.fn().mockRejectedValue(new ApiError(status, 'provider error')) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '生成 AI 摘要' }))
+    expect(await screen.findByText(message)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '重試生成 AI 摘要' }))
+    await waitFor(() => expect(api.generateSummary).toHaveBeenCalledTimes(2))
+    await user.click(screen.getByRole('button', { name: '自行撰寫摘要' }))
+    expect(screen.getByLabelText('摘要概覽')).toBeVisible()
+  })
+
+  it('offers retry, manual entry, and copy for parent after a saved Lesson summary', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedSummary = { overview: '已儲存的課堂摘要。', learning_progress: [], strengths: [], difficulties: [], next_steps: [] }
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: savedSummary, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), generateFeedback: vi.fn().mockRejectedValue(new ApiError(504, 'timed out')) })
+    render(<App api={api} />)
+    expect(await screen.findByText('生成家長回饋時，已儲存的課堂內容會傳送至已設定的 AI 服務。')).toBeVisible()
+    await user.click(await screen.findByRole('button', { name: '生成家長回饋' }))
+    expect(await screen.findByText('AI 生成逾時，尚未產生任何內容。請重試或自行撰寫。')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '重試生成家長回饋' }))
+    await waitFor(() => expect(api.generateFeedback).toHaveBeenCalledTimes(2))
+    await user.click(screen.getByRole('button', { name: '自行撰寫家長回饋' }))
+    expect(screen.getByLabelText('家長回饋')).toBeVisible()
+    expect(screen.getByRole('button', { name: '複製給家長' })).toBeVisible()
+  })
+
+  it('asks before replacing a saved Lesson summary', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedSummary = { overview: '原本已儲存的摘要。', learning_progress: [], strengths: [], difficulties: [], next_steps: [] }
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: savedSummary, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), updateLessonNote: vi.fn().mockResolvedValue(savedNote) })
+    render(<App api={api} />)
+    await user.type(await screen.findByLabelText('摘要概覽'), ' 已更新')
+    await user.click(screen.getByRole('button', { name: '儲存摘要' }))
+    expect(api.updateLessonNote).not.toHaveBeenCalled()
+    expect(await screen.findByRole('heading', { name: '覆寫已儲存的摘要？' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '覆寫摘要' }))
+    await waitFor(() => expect(api.updateLessonNote).toHaveBeenCalledWith(31, expect.objectContaining({ ai_summary: expect.objectContaining({ overview: '原本已儲存的摘要。 已更新' }) })))
+  })
+
+  it('saves Teacher additions independently without replacing a saved Lesson summary', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedSummary = { overview: '已儲存的課堂摘要。', learning_progress: [], strengths: [], difficulties: [], next_steps: [] }
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: savedSummary, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), updateLessonNote: vi.fn().mockResolvedValue({ ...savedNote, teacher_note: '下次加強基本觀念。' }) })
+    render(<App api={api} />)
+    await user.type(await screen.findByLabelText('教師補充（選填）'), '下次加強基本觀念。')
+    await user.click(screen.getByRole('button', { name: '儲存教師補充' }))
+    await waitFor(() => expect(api.updateLessonNote).toHaveBeenCalledWith(31, { teacher_note: '下次加強基本觀念。' }))
+    expect(screen.queryByRole('heading', { name: '覆寫已儲存的摘要？' })).not.toBeInTheDocument()
+  })
+
+  it('keeps an AI Lesson summary as an editable draft until the Tutor explicitly saves it', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const generatedSummary = { overview: 'AI 產生的課堂摘要。', learning_progress: ['完成練習'], strengths: [], difficulties: [], next_steps: [] }
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), generateSummary: vi.fn().mockResolvedValue(generatedSummary), updateLessonNote: vi.fn().mockResolvedValue({ ...savedNote, ai_summary: generatedSummary }) })
+    render(<App api={api} />)
+    expect(await screen.findByText('生成 AI 摘要時，已儲存的課堂內容會傳送至已設定的 AI 服務。')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '生成 AI 摘要' }))
+    expect(await screen.findByText('AI 草稿未儲存')).toBeVisible()
+    expect(screen.getByLabelText('摘要概覽')).toHaveValue(generatedSummary.overview)
+    expect(screen.queryByRole('button', { name: '生成家長回饋' })).not.toBeInTheDocument()
+    expect(api.updateLessonNote).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: '儲存摘要' }))
+    await waitFor(() => expect(api.updateLessonNote).toHaveBeenCalledWith(31, expect.objectContaining({ ai_summary: generatedSummary })))
+    expect(await screen.findByRole('button', { name: '生成家長回饋' })).toBeVisible()
+  })
+
+  it('shows an in-place generating state and prevents duplicate AI summary requests', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), generateSummary: vi.fn(() => new Promise<never>(() => {})) })
+    render(<App api={api} />)
+    const generate = await screen.findByRole('button', { name: '生成 AI 摘要' })
+    await user.click(generate)
+    expect(screen.getByLabelText('摘要生成中')).toBeVisible()
+    expect(generate).toBeDisabled()
+    await user.click(generate)
+    expect(api.generateSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a manual Lesson summary when an earlier AI request resolves late', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    let resolveSummary: (value: LessonSummary) => void = () => {}
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), generateSummary: vi.fn(() => new Promise<LessonSummary>((resolve) => { resolveSummary = resolve })) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '生成 AI 摘要' }))
+    await user.click(screen.getByRole('button', { name: '自行撰寫' }))
+    await user.type(screen.getByLabelText('摘要概覽'), 'Tutor 手動整理的摘要。')
+    await act(async () => { resolveSummary({ overview: '晚到的 AI 摘要。', learning_progress: [], strengths: [], difficulties: [], next_steps: [] }) })
+    expect(screen.getByLabelText('摘要概覽')).toHaveValue('Tutor 手動整理的摘要。')
+  })
+
+  it('keeps manual Parent feedback when an earlier AI request resolves late', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedSummary = { overview: '已儲存的課堂摘要。', learning_progress: [], strengths: [], difficulties: [], next_steps: [] }
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: savedSummary, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    let resolveFeedback: (value: string) => void = () => {}
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), generateFeedback: vi.fn(() => new Promise<string>((resolve) => { resolveFeedback = resolve })) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '生成家長回饋' }))
+    await user.click(screen.getByRole('button', { name: '自行撰寫' }))
+    await user.type(screen.getByLabelText('家長回饋'), 'Tutor 手動整理的家長回饋。')
+    await act(async () => { resolveFeedback('晚到的 AI 家長回饋。') })
+    expect(screen.getByLabelText('家長回饋')).toHaveValue('Tutor 手動整理的家長回饋。')
+  })
+
+  it('safeguards an unsaved AI draft with save, discard, and keep-editing actions', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '自行撰寫' }))
+    await user.type(screen.getByLabelText('摘要概覽'), '尚未儲存的摘要。')
+    await user.click(screen.getByRole('button', { name: '返回課程' }))
+    expect(await screen.findByRole('heading', { name: '離開未儲存的草稿？' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '繼續編輯' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '捨棄草稿' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '儲存草稿' })).toBeVisible()
+  })
+
+  it('warns before the browser closes with an unsaved summary draft', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '自行撰寫' }))
+    await user.type(screen.getByLabelText('摘要概覽'), '尚未儲存的摘要。')
+    const event = new Event('beforeunload', { cancelable: true })
+    fireEvent(window, event)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('keeps the requested exit after confirming a replacement summary save', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedSummary = { overview: '原本已儲存的摘要。', learning_progress: [], strengths: [], difficulties: [], next_steps: [] }
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: '學生已完成今天的練習。', ai_summary: savedSummary, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote), updateLessonNote: vi.fn().mockResolvedValue(savedNote), listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])) })
+    render(<App api={api} />)
+    await user.type(await screen.findByLabelText('摘要概覽'), ' 已更新')
+    await user.click(screen.getByRole('button', { name: '返回課程' }))
+    await user.click(await screen.findByRole('button', { name: '儲存草稿' }))
+    expect(await screen.findByRole('heading', { name: '覆寫已儲存的摘要？' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '覆寫摘要' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/lessons'))
   })
 
   it('keeps raw notes visible and blocks navigation after autosave fails', async () => {
