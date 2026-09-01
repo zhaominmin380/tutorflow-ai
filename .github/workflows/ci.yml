@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: backend
     env:
-      DATABASE_URL: sqlite:///:memory:
+      DATABASE_URL: "sqlite:///:memory:"
       SECRET_KEY: ci-test-secret
       DATABASE_SCHEMA_MANAGED_BY_ALEMBIC: "false"
     steps:
