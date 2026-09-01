@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Sacramento&amp;display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#dcd2c4; }
+  * { box-sizing:border-box; }
+  a { color:#a55757; text-decoration:none; }
+  a:hover { color:#4a2626; text-decoration:underline; }
+  textarea, input, button { font-family:'Noto Sans TC', system-ui, sans-serif; }
+  textarea:focus, input:focus { outline:2px solid #c5918c; outline-offset:1px; }
+</style>
+</helmet>
+<div style="display:flex; min-height:100vh; background:#dcd2c4; color:#080612; font-family:'Noto Sans TC', system-ui, sans-serif; -webkit-font-smoothing:antialiased;">
+
+  <aside style="width: 236px; flex: 0 0 236px; border-right: 1px solid #c9bda9; padding: 22px 16px; display: flex; flex-direction: column; gap: 28px; position: sticky; top: 0; height: 100vh; background-color: #E8DDD0">
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 6px 0;">
+      <div style="display:flex; align-items:flex-start; gap:5px; line-height:1;">
+        <span style="font-family:'Sacramento', cursive; font-size:44px; color:#7a4a34; line-height:1;">Tova</span>
+        <img src="./assets/leaf.png" alt="" style="width:26px; height:auto; margin-top:6px;" />
+      </div>
+      <div style="font-size:11.5px; letter-spacing:0.18em; color:#9c7c68;">個人教學工作區</div>
+    </div>
+
+    <nav style="display:flex; flex-direction:column; gap:4px;">
+      <button type="button" onClick="{{ goToday }}" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; border-radius:10px; font-size:14px; font-weight:500; text-align:left; cursor:pointer; background:{{ navTodayBg }}; color:{{ navTodayFg }};">
+        <span style="width:6px; height:6px; border-radius:99px; background:currentColor; opacity:0.55;"></span>今日
+      </button>
+      <button type="button" onClick="{{ goStudents }}" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; border-radius:10px; font-size:14px; font-weight:500; text-align:left; cursor:pointer; background:{{ navStudentsBg }}; color:{{ navStudentsFg }};">
+        <span style="width:6px; height:6px; border-radius:99px; background:currentColor; opacity:0.55;"></span>學生
+      </button>
+      <button type="button" onClick="{{ goLessons }}" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; border-radius:10px; font-size:14px; font-weight:500; text-align:left; cursor:pointer; background:{{ navRecordBg }}; color:{{ navRecordFg }};">
+        <span style="width:6px; height:6px; border-radius:99px; background:currentColor; opacity:0.55;"></span>課程
+      </button>
+    </nav>
+
+    <div style="margin-top:auto; border-top:1px solid #efe7db; padding-top:14px; display:flex; align-items:center; gap:10px;">
+      <div style="width:28px; height:28px; border-radius:99px; background:#c5918c; color:#4a2626; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">許</div>
+      <div style="font-size:12px; line-height:1.4;">
+        <div style="font-weight:500;">許雅涵</div>
+        <div style="color:#6d6478;">個人教師</div>
+      </div>
+    </div>
+  </aside>
+
+  <main style="flex:1; min-width:0; padding:30px 40px 72px; max-width:1180px;">
+
+    <!-- ── 今日 Dashboard ─────────────────────────── -->
+    <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+      <section data-screen-label="Dashboard" style="display:flex; flex-direction:column; gap:22px;">
+        <header style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px;">
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:0.08em; color:#6d6478;">2026/08/30（日）</div>
+            <h1 style="margin:0; font-size:26px; font-weight:700; letter-spacing:-0.01em;">今日</h1>
+          </div>
+          <button type="button" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-size:14px; font-weight:500; cursor:pointer;" style-hover="background:#8a4747;">安排課程</button>
+        </header>
+
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; padding:56px 40px; display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center;">
+            <div style="width:52px; height:52px; border-radius:14px; background:#d895aa; display:flex; align-items:center; justify-content:center; color:#a55757; font-size:20px; font-weight:700;">＋</div>
+            <h2 style="margin:0; font-size:18px; font-weight:700;">先建立第一位學生</h2>
+            <p style="margin:0; max-width:380px; font-size:14px; line-height:1.7; color:#5f5670; text-wrap:pretty;">安排課程前需要先有學生資料。建立後即可在今日看見當天的課程與待寫的紀錄。</p>
+            <button type="button" style="margin-top:6px; background:#a55757; color:#fff; border:none; border-radius:10px; padding:11px 20px; font-size:14px; font-weight:500; cursor:pointer;">新增學生</button>
+            <sc-if value="{{ annotate }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:8px; font-family:'IBM Plex Mono', monospace; font-size:11px; color:#7a7186; letter-spacing:0.04em;">狀態：首次使用（空的可行動儀表板）</div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isPopulated }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; flex-direction:column; gap:22px;">
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; max-width:520px;">
+              <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:6px;">
+                <div style="font-size:12px; color:#6d6478;">今日課程</div>
+                <div style="font-size:24px; font-weight:700; font-family:'IBM Plex Mono', monospace;">3 <span style="font-size:13px; font-weight:400; color:#6d6478; font-family:'Noto Sans TC', sans-serif;">堂</span></div>
+              </div>
+              <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:6px;">
+                <div style="font-size:12px; color:#6d6478;">在學學生</div>
+                <div style="font-size:24px; font-weight:700; font-family:'IBM Plex Mono', monospace;">12 <span style="font-size:13px; font-weight:400; color:#6d6478; font-family:'Noto Sans TC', sans-serif;">位</span></div>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; align-items:baseline; justify-content:space-between;">
+                <h2 style="margin:0; font-size:15px; font-weight:700;">今日議程</h2>
+                <a href="#" onClick="{{ goLessons }}" style="font-size:13px;">查看全部課程</a>
+              </div>
+
+              <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; overflow:hidden;">
+                <div style="display:grid; grid-template-columns:132px 1fr auto auto; gap:18px; align-items:center; padding:18px 20px; border-bottom:1px solid #ded3c2;">
+                  <div style="font-family:'IBM Plex Mono', monospace; font-size:14px; color:#6d6478;">09:00–10:00</div>
+                  <div style="display:flex; flex-direction:column; gap:3px; min-width:0;">
+                    <div style="font-size:15px; font-weight:500; color:#6d6478; text-decoration:line-through; text-decoration-color:#c2b5a0;">林品瑄</div>
+                    <div style="font-size:12.5px; color:#847b90;">國中數學 · 線上</div>
+                  </div>
+                  <div style="font-size:12px; font-weight:500; color:#7a5a5a; background:#e4dccd; border-radius:99px; padding:5px 11px;">已完成</div>
+                  <button type="button" onClick="{{ goRecord }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:9px 15px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">檢視紀錄</button>
+                </div>
+
+                <div style="display:grid; grid-template-columns:132px 1fr auto auto; gap:18px; align-items:center; padding:18px 20px; border-bottom:1px solid #ded3c2; background:#f4e6e6; box-shadow:inset 3px 0 0 #c5918c;">
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    <div style="font-family:'IBM Plex Mono', monospace; font-size:14px; font-weight:500;">14:00–15:00</div>
+                    <div style="font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:0.06em; color:#a55757;">NEXT</div>
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:3px; min-width:0;">
+                    <div style="font-size:15px; font-weight:500;">陳柏睿</div>
+                    <div style="font-size:12.5px; color:#6d6478;">高中物理 · 到府（大安區）</div>
+                  </div>
+                  <div style="font-size:12px; font-weight:500; color:#a55757; background:#eddede; border-radius:99px; padding:5px 11px;">已排定</div>
+                  <button type="button" onClick="{{ goRecord }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:9px 16px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#8a4747;">完成並撰寫紀錄</button>
+                </div>
+
+                <div style="display:grid; grid-template-columns:132px 1fr auto auto; gap:18px; align-items:center; padding:18px 20px;">
+                  <div style="font-family:'IBM Plex Mono', monospace; font-size:14px; color:#332c40;">19:30–21:00</div>
+                  <div style="display:flex; flex-direction:column; gap:3px; min-width:0;">
+                    <div style="font-size:15px; font-weight:500;">王思妤</div>
+                    <div style="font-size:12.5px; color:#6d6478;">國中英文 · 線上</div>
+                  </div>
+                  <div style="font-size:12px; font-weight:500; color:#a55757; background:#eddede; border-radius:99px; padding:5px 11px;">已排定</div>
+                  <button type="button" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:9px 15px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">課程詳情</button>
+                </div>
+              </div>
+              <sc-if value="{{ annotate }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family:'IBM Plex Mono', monospace; font-size:11px; color:#7a7186; letter-spacing:0.04em;">主要行動只出現在下一堂課；其餘列為次要行動</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+    </sc-if>
+
+    <!-- ── 學生 Students ─────────────────────────── -->
+    <sc-if value="{{ isStudents }}" hint-placeholder-val="{{ false }}">
+      <section data-screen-label="Students" style="display:flex; flex-direction:column; gap:20px;">
+        <header style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px;">
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:0.08em; color:#6d6478;">12 位在學 · 3 位已封存</div>
+            <h1 style="margin:0; font-size:26px; font-weight:700; letter-spacing:-0.01em;">學生</h1>
+          </div>
+          <button type="button" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:11px 18px; font-size:14px; font-weight:500; cursor:pointer;" style-hover="background:#8a4747;">新增學生</button>
+        </header>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="text" placeholder="搜尋學生姓名或科目" style="flex:1; max-width:340px; background:#f7f2ea; border:1px solid #c2b5a0; border-radius:10px; padding:10px 14px; font-size:14px; color:#080612;">
+          <button type="button" onClick="{{ toggleFilter }}" style="background:#f7f2ea; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:10px 15px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">篩選</button>
+        </div>
+
+        <sc-if value="{{ filterOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:14px; padding:16px 18px; display:flex; gap:28px; flex-wrap:wrap;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:12px; color:#6d6478;">狀態</div>
+              <div style="display:flex; gap:8px;">
+                <span style="font-size:12.5px; padding:6px 12px; border-radius:99px; background:#a55757; color:#fff;">在學</span>
+                <span style="font-size:12.5px; padding:6px 12px; border-radius:99px; background:#eddede; color:#a55757;">已封存</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:12px; color:#6d6478;">科目</div>
+              <div style="display:flex; gap:8px;">
+                <span style="font-size:12.5px; padding:6px 12px; border-radius:99px; background:#eddede; color:#a55757;">數學</span>
+                <span style="font-size:12.5px; padding:6px 12px; border-radius:99px; background:#eddede; color:#a55757;">英文</span>
+                <span style="font-size:12.5px; padding:6px 12px; border-radius:99px; background:#eddede; color:#a55757;">物理</span>
+                <span style="font-size:12.5px; padding:6px 12px; border-radius:99px; background:#eddede; color:#a55757;">化學</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; padding:56px 40px; display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center;">
+            <h2 style="margin:0; font-size:17px; font-weight:700;">尚未建立學生</h2>
+            <p style="margin:0; max-width:340px; font-size:14px; line-height:1.7; color:#5f5670;">建立學生後即可安排課程與撰寫課堂紀錄。</p>
+            <button type="button" style="margin-top:6px; background:#a55757; color:#fff; border:none; border-radius:10px; padding:11px 20px; font-size:14px; font-weight:500; cursor:pointer;">新增學生</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isPopulated }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; overflow:hidden;">
+              <div style="display:grid; grid-template-columns:1.2fr 0.7fr 0.9fr 1.1fr 0.7fr; gap:16px; padding:12px 20px; background:#ebe1d2; border-bottom:1px solid #c9bda9; font-size:12px; color:#6d6478;">
+                <div>姓名</div><div>年級</div><div>科目</div><div>下一堂課</div><div>狀態</div>
+              </div>
+              <div onClick="{{ openChen }}" style="display:grid; grid-template-columns:1.2fr 0.7fr 0.9fr 1.1fr 0.7fr; gap:16px; padding:15px 20px; border-bottom:1px solid #ded3c2; font-size:14px; cursor:pointer;" style-hover="background:#fdf9f3;">
+                <div style="font-weight:500;">陳柏睿</div><div style="color:#5f5670;">高二</div><div style="color:#5f5670;">物理</div>
+                <div style="font-family:'IBM Plex Mono', monospace; font-size:13px; color:#332c40;">08/30 14:00</div>
+                <div><span style="font-size:12px; color:#7a5a5a; background:#e4dccd; border-radius:99px; padding:4px 10px;">在學</span></div>
+              </div>
+              <div onClick="{{ openLin }}" style="display:grid; grid-template-columns:1.2fr 0.7fr 0.9fr 1.1fr 0.7fr; gap:16px; padding:15px 20px; border-bottom:1px solid #ded3c2; font-size:14px; cursor:pointer;" style-hover="background:#fdf9f3;">
+                <div style="font-weight:500;">林品瑄</div><div style="color:#5f5670;">國三</div><div style="color:#5f5670;">數學</div>
+                <div style="font-family:'IBM Plex Mono', monospace; font-size:13px; color:#332c40;">09/02 17:00</div>
+                <div><span style="font-size:12px; color:#7a5a5a; background:#e4dccd; border-radius:99px; padding:4px 10px;">在學</span></div>
+              </div>
+              <div onClick="{{ openWang }}" style="display:grid; grid-template-columns:1.2fr 0.7fr 0.9fr 1.1fr 0.7fr; gap:16px; padding:15px 20px; border-bottom:1px solid #ded3c2; font-size:14px; cursor:pointer;" style-hover="background:#fdf9f3;">
+                <div style="font-weight:500;">王思妤</div><div style="color:#5f5670;">國二</div><div style="color:#5f5670;">英文</div>
+                <div style="font-family:'IBM Plex Mono', monospace; font-size:13px; color:#332c40;">08/30 19:30</div>
+                <div><span style="font-size:12px; color:#7a5a5a; background:#e4dccd; border-radius:99px; padding:4px 10px;">在學</span></div>
+              </div>
+              <div onClick="{{ openZhang }}" style="display:grid; grid-template-columns:1.2fr 0.7fr 0.9fr 1.1fr 0.7fr; gap:16px; padding:15px 20px; border-bottom:1px solid #ded3c2; font-size:14px; cursor:pointer;" style-hover="background:#fdf9f3;">
+                <div style="font-weight:500;">張宥辰</div><div style="color:#5f5670;">高一</div><div style="color:#5f5670;">化學</div>
+                <div style="font-family:'IBM Plex Mono', monospace; font-size:13px; color:#847b90;">未安排</div>
+                <div><span style="font-size:12px; color:#7a5a5a; background:#e4dccd; border-radius:99px; padding:4px 10px;">在學</span></div>
+              </div>
+              <div onClick="{{ openHuang }}" style="display:grid; grid-template-columns:1.2fr 0.7fr 0.9fr 1.1fr 0.7fr; gap:16px; padding:15px 20px; font-size:14px; cursor:pointer;" style-hover="background:#fdf9f3;">
+                <div style="font-weight:500; color:#6d6478;">黃士豪</div><div style="color:#847b90;">高三</div><div style="color:#847b90;">數學</div>
+                <div style="font-family:'IBM Plex Mono', monospace; font-size:13px; color:#847b90;">—</div>
+                <div><span style="font-size:12px; color:#6d6478; background:#e6ddcf; border-radius:99px; padding:4px 10px;">已封存</span></div>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:center;">
+              <button type="button" style="background:#f7f2ea; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:9px 20px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">載入更多</button>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+    </sc-if>
+
+    <!-- ── 課堂紀錄 Lesson Record ─────────────────── -->
+    <sc-if value="{{ isRecord }}" hint-placeholder-val="{{ false }}">
+      <section data-screen-label="Lesson Record" style="display:flex; flex-direction:column; gap:22px; max-width:760px;">
+        <header style="display:flex; flex-direction:column; gap:12px;">
+          <button type="button" onClick="{{ tryExit }}" style="align-self:flex-start; background:none; border:none; padding:0; font-size:13px; color:#a55757; cursor:pointer;">← 返回今日</button>
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:20px;">
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <h1 style="margin:0; font-size:24px; font-weight:700; letter-spacing:-0.01em;">陳柏睿 · 課堂紀錄</h1>
+              <div style="font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:#6d6478;">2026/08/30（日） 14:00–15:00 · 高中物理</div>
+            </div>
+            <div style="font-size:12px; font-weight:500; color:#7a5a5a; background:#e4dccd; border-radius:99px; padding:6px 12px;">已完成</div>
+          </div>
+        </header>
+
+        <!-- 步驟 1 原始筆記 -->
+        <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; padding:20px 22px; display:flex; flex-direction:column; gap:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:22px; height:22px; border-radius:99px; background:#a55757; color:#fff; font-size:12px; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono', monospace;">1</span>
+              <h2 style="margin:0; font-size:15px; font-weight:700;">原始筆記</h2>
+            </div>
+            <div style="font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#847b90;">{{ noteStatus }}</div>
+          </div>
+
+          <sc-if value="{{ notStarted }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; flex-direction:column; gap:12px; padding:22px; border:1px dashed #c2b5a0; border-radius:12px; align-items:flex-start; background:#f2ece2;">
+              <p style="margin:0; font-size:13.5px; line-height:1.7; color:#5f5670; text-wrap:pretty;">開始撰寫後，這堂課會建立一份持續保存的紀錄，筆記將於背景自動儲存。</p>
+              <button type="button" onClick="{{ startRecord }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-size:14px; font-weight:500; cursor:pointer;">開始撰寫紀錄</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ started }}" hint-placeholder-val="{{ false }}">
+            <textarea onChange="{{ onNotes }}" value="{{ notes }}" placeholder="這堂課做了什麼？學生哪裡卡住？" style="width:100%; min-height:120px; resize:vertical; border:1px solid #c9bda9; border-radius:12px; padding:14px; font-size:14px; line-height:1.75; color:#080612; background:#fff;"></textarea>
+          </sc-if>
+        </div>
+
+        <!-- 步驟 2 AI 課堂摘要 -->
+        <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; padding:20px 22px; display:flex; flex-direction:column; gap:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:22px; height:22px; border-radius:99px; background:#a55757; color:#fff; font-size:12px; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono', monospace;">2</span>
+              <h2 style="margin:0; font-size:15px; font-weight:700;">AI 課堂摘要</h2>
+            </div>
+            <div style="font-size:11.5px; font-weight:500; border-radius:99px; padding:5px 11px; background:{{ summaryChipBg }}; color:{{ summaryChipFg }};">{{ summaryChip }}</div>
+          </div>
+
+          <sc-if value="{{ aiIdle }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+              <button type="button" onClick="{{ generate }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-size:14px; font-weight:500; cursor:pointer;">產生摘要</button>
+              <button type="button" onClick="{{ manualSummary }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">自行撰寫</button>
+              <span style="font-size:12.5px; color:#847b90;">以原始筆記為輸入</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ aiLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="height:12px; border-radius:6px; background:#e2d8c8; width:88%;"></div>
+              <div style="height:12px; border-radius:6px; background:#e2d8c8; width:74%;"></div>
+              <div style="height:12px; border-radius:6px; background:#e2d8c8; width:56%;"></div>
+              <div style="font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#847b90;">生成中…</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ aiError }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px solid #dcb9b9; background:#f6e5e5; border-radius:12px; padding:16px 18px; display:flex; flex-direction:column; gap:10px;">
+              <div style="font-size:14px; font-weight:500; color:#8a3b3b;">摘要生成失敗</div>
+              <p style="margin:0; font-size:13.5px; line-height:1.7; color:#6f4a4a;">AI 服務暫時無法回應。你可以重試，或自行撰寫並儲存摘要。</p>
+              <div style="display:flex; gap:10px;">
+                <button type="button" onClick="{{ generate }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:9px 16px; font-size:13.5px; font-weight:500; cursor:pointer;">重試</button>
+                <button type="button" onClick="{{ manualSummary }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:9px 16px; font-size:13.5px; font-weight:500; cursor:pointer;">自行撰寫</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ aiEditable }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:14px;">
+              <sc-for list="{{ summaryFields }}" as="field" hint-placeholder-count="5">
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  <label style="font-size:12px; color:#6d6478;">{{ field.label }}</label>
+                  <textarea onChange="{{ field.onChange }}" value="{{ field.value }}" style="width:100%; min-height:56px; resize:vertical; border:1px solid #c9bda9; border-radius:10px; padding:11px 13px; font-size:13.5px; line-height:1.7; color:#080612; background:#fff;"></textarea>
+                </div>
+              </sc-for>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <button type="button" onClick="{{ saveSummary }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-size:14px; font-weight:500; cursor:pointer;">儲存摘要</button>
+                <button type="button" onClick="{{ generate }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:500; cursor:pointer;">重新生成</button>
+                <span style="font-size:12.5px; color:#847b90;">{{ summaryHint }}</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- 步驟 3 家長回饋 -->
+        <div style="background:#f7f2ea; border:1px solid #c9bda9; border-radius:16px; padding:20px 22px; display:flex; flex-direction:column; gap:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:16px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="width:22px; height:22px; border-radius:99px; background:#eddede; color:#a55757; font-size:12px; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono', monospace;">3</span>
+              <h2 style="margin:0; font-size:15px; font-weight:700;">家長回饋 <span style="font-weight:400; color:#847b90; font-size:13px;">（選填）</span></h2>
+            </div>
+            <div style="font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:#847b90;">{{ fbStatusLabel }}</div>
+          </div>
+
+          <sc-if value="{{ fbLocked }}" hint-placeholder-val="{{ true }}">
+            <p style="margin:0; font-size:13.5px; line-height:1.7; color:#847b90;">儲存課堂摘要後即可產生家長回饋草稿。</p>
+          </sc-if>
+
+          <sc-if value="{{ fbReady }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <button type="button" onClick="{{ generateFb }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">產生家長回饋草稿</button>
+              <span style="font-size:12.5px; color:#847b90;">由 TutorFlow 產生後由你複製傳送</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ fbDraft }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <textarea onChange="{{ onFb }}" value="{{ fb }}" style="width:100%; min-height:150px; resize:vertical; border:1px solid #c9bda9; border-radius:12px; padding:14px; font-size:13.5px; line-height:1.8; color:#080612; background:#fff;"></textarea>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <button type="button" onClick="{{ copyFb }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-size:14px; font-weight:500; cursor:pointer;">複製回饋</button>
+                <span style="font-size:12.5px; color:#7a5a5a;">{{ copiedLabel }}</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </section>
+    </sc-if>
+  </main>
+
+  <!-- 學生詳情側邊面板 -->
+  <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; inset:0; background:rgba(8,6,18,0.30); display:flex; justify-content:flex-end; z-index:40;">
+      <div onClick="{{ closeSheet }}" style="flex:1;"></div>
+      <div style="width:400px; max-width:92vw; background:#f7f2ea; border-left:1px solid #c9bda9; padding:26px 26px 32px; display:flex; flex-direction:column; gap:20px; box-shadow:-24px 0 60px rgba(8,6,18,0.16);">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+          <div style="display:flex; flex-direction:column; gap:5px;">
+            <h2 style="margin:0; font-size:19px; font-weight:700;">{{ sheetName }}</h2>
+            <div style="font-size:13px; color:#6d6478;">{{ sheetMeta }}</div>
+          </div>
+          <button type="button" onClick="{{ closeSheet }}" style="background:none; border:none; font-size:18px; color:#6d6478; cursor:pointer; padding:2px 4px;">×</button>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:1px; background:#ded3c2; border:1px solid #c9bda9; border-radius:12px; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; padding:12px 14px; background:#f7f2ea; font-size:13.5px;"><span style="color:#6d6478;">科目</span><span>{{ sheetSubject }}</span></div>
+          <div style="display:flex; justify-content:space-between; padding:12px 14px; background:#f7f2ea; font-size:13.5px;"><span style="color:#6d6478;">家長聯絡</span><span style="font-family:'IBM Plex Mono', monospace; font-size:13px;">{{ sheetPhone }}</span></div>
+          <div style="display:flex; justify-content:space-between; padding:12px 14px; background:#f7f2ea; font-size:13.5px;"><span style="color:#6d6478;">下一堂課</span><span style="font-family:'IBM Plex Mono', monospace; font-size:13px;">{{ sheetNext }}</span></div>
+          <div style="display:flex; justify-content:space-between; padding:12px 14px; background:#f7f2ea; font-size:13.5px;"><span style="color:#6d6478;">狀態</span><span>{{ sheetState }}</span></div>
+        </div>
+
+        <p style="margin:0; font-size:13.5px; line-height:1.8; color:#332c40; text-wrap:pretty;">{{ sheetNote }}</p>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:auto;">
+          <a href="#" onClick="{{ goLessons }}" style="font-size:13.5px;">查看這位學生的課程 →</a>
+          <div style="display:flex; gap:10px;">
+            <button type="button" style="flex:1; background:#a55757; color:#fff; border:none; border-radius:10px; padding:11px 16px; font-size:14px; font-weight:500; cursor:pointer;">編輯</button>
+            <button type="button" onClick="{{ askArchive }}" style="flex:1; background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:11px 16px; font-size:14px; font-weight:500; cursor:pointer;" style-hover="background:#e9e0d2;">封存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- 封存確認 -->
+  <sc-if value="{{ archiveOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; inset:0; background:rgba(8,6,18,0.38); display:flex; align-items:center; justify-content:center; z-index:60; padding:24px;">
+      <div style="width:420px; max-width:100%; background:#f7f2ea; border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:12px; box-shadow:0 30px 70px rgba(8,6,18,0.26);">
+        <h3 style="margin:0; font-size:17px; font-weight:700;">封存 {{ sheetName }}？</h3>
+        <p style="margin:0; font-size:13.5px; line-height:1.75; color:#5f5670; text-wrap:pretty;">封存後將無法為這位學生安排新課程，既有課程與紀錄會完整保留。你隨時可以取消封存。</p>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+          <button type="button" onClick="{{ cancelArchive }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:500; cursor:pointer;">取消</button>
+          <button type="button" onClick="{{ cancelArchive }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-size:13.5px; font-weight:500; cursor:pointer;">確認封存</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- 草稿離開保護 -->
+  <sc-if value="{{ exitOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; inset:0; background:rgba(8,6,18,0.38); display:flex; align-items:center; justify-content:center; z-index:60; padding:24px;">
+      <div style="width:440px; max-width:100%; background:#f7f2ea; border-radius:16px; padding:24px; display:flex; flex-direction:column; gap:12px; box-shadow:0 30px 70px rgba(8,6,18,0.26);">
+        <h3 style="margin:0; font-size:17px; font-weight:700;">尚有未儲存的 AI 草稿</h3>
+        <p style="margin:0; font-size:13.5px; line-height:1.75; color:#5f5670; text-wrap:pretty;">這份課堂摘要草稿尚未儲存到課堂紀錄。你要先儲存嗎？</p>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px; flex-wrap:wrap;">
+          <button type="button" onClick="{{ keepEditing }}" style="background:none; color:#a55757; border:none; border-radius:10px; padding:10px 12px; font-size:13.5px; font-weight:500; cursor:pointer;">繼續編輯</button>
+          <button type="button" onClick="{{ discardDraft }}" style="background:#fff; color:#2b2438; border:1px solid #c2b5a0; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:500; cursor:pointer;">捨棄</button>
+          <button type="button" onClick="{{ saveDraftExit }}" style="background:#a55757; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-size:13.5px; font-weight:500; cursor:pointer;">儲存草稿</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;emptyWorkspace&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;狀態&quot;},&quot;aiOutcome&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;成功&quot;,&quot;失敗&quot;],&quot;default&quot;:&quot;成功&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;狀態&quot;},&quot;showAnnotations&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;狀態&quot;}}">
+class Component extends DCLogic {
+  state = {
+    page: 'today', sheet: null, archive: false, filterOpen: false,
+    started: false, notes: '', saving: false, savedAt: '',
+    ai: 'idle', summarySaved: false,
+    s: { overview: '', progress: '', strengths: '', difficulties: '', next: '' },
+    fb: '', fbState: 'idle', copied: false, exit: false
+  };
+
+  students = {
+    chen: { name: '陳柏睿', meta: '高二 · 建國中學', subject: '高中物理', phone: '0912-345-678', next: '08/30 14:00', state: '在學',
+      note: '力學單元進度落後約兩週，需要多做題型辨識練習。家長希望每兩週收到一次回饋。' },
+    lin: { name: '林品瑄', meta: '國三 · 中正國中', subject: '國中數學', phone: '0933-221-104', next: '09/02 17:00', state: '在學',
+      note: '幾何證明表現穩定，會考前需加強應用題閱讀速度。' },
+    wang: { name: '王思妤', meta: '國二 · 民生國中', subject: '國中英文', phone: '0987-556-210', next: '08/30 19:30', state: '在學',
+      note: '字彙量成長明顯，口說仍偏保守，課堂多安排短對話練習。' },
+    zhang: { name: '張宥辰', meta: '高一 · 成功高中', subject: '高中化學', phone: '0921-778-330', next: '未安排', state: '在學',
+      note: '暑期後尚未排課，家長預計九月中恢復每週一堂。' },
+    huang: { name: '黃士豪', meta: '高三 · 已畢業', subject: '高中數學', phone: '0955-102-887', next: '—', state: '已封存',
+      note: '學測後結束課程，紀錄保留供日後參考。' }
+  };
+
+  now() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+
+  setNotes = (v) => {
+    this.setState({ notes: v, saving: true });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({ saving: false, savedAt: this.now() }), 800);
+  };
+
+  field(key, label) {
+    return { label, value: this.state.s[key], onChange: (e) => {
+      const v = e.target.value;
+      this.setState(st => ({ s: Object.assign({}, st.s, { [key]: v }), summarySaved: false, ai: 'draft' }));
+    } };
+  }
+
+  renderVals() {
+    const st = this.state, p = st.page;
+    const empty = this.props.emptyWorkspace === true;
+    const nav = (on) => on ? '#EEE4D9' : 'transparent';
+    const navFg = (on) => on ? '#4a2626' : '#5f5670';
+    const s = this.students[st.sheet] || {};
+    const chip = { idle: ['—', 'transparent', '#847b90'], loading: ['生成中', '#eddede', '#a55757'],
+      error: ['生成失敗', '#f6e5e5', '#8a3b3b'], draft: ['草稿未儲存', '#d895aa', '#4a1f2c'],
+      manual: ['草稿未儲存', '#d895aa', '#4a1f2c'], saved: ['已儲存', '#e4dccd', '#7a5a5a'] }[st.ai];
+
+    return {
+      isToday: p === 'today', isStudents: p === 'students', isRecord: p === 'record',
+      isEmpty: empty, isPopulated: !empty, annotate: this.props.showAnnotations === true,
+      navTodayBg: nav(p === 'today'), navTodayFg: navFg(p === 'today'),
+      navStudentsBg: nav(p === 'students'), navStudentsFg: navFg(p === 'students'),
+      navRecordBg: nav(p === 'record'), navRecordFg: navFg(p === 'record'),
+      goToday: () => this.setState({ page: 'today' }),
+      goStudents: () => this.setState({ page: 'students', sheet: null }),
+      goLessons: () => this.setState({ page: 'record', sheet: null }),
+      goRecord: () => this.setState({ page: 'record' }),
+      toggleFilter: () => this.setState(x => ({ filterOpen: !x.filterOpen })),
+      filterOpen: st.filterOpen,
+
+      openChen: () => this.setState({ sheet: 'chen' }), openLin: () => this.setState({ sheet: 'lin' }),
+      openWang: () => this.setState({ sheet: 'wang' }), openZhang: () => this.setState({ sheet: 'zhang' }),
+      openHuang: () => this.setState({ sheet: 'huang' }),
+      sheetOpen: !!st.sheet, closeSheet: () => this.setState({ sheet: null, archive: false }),
+      sheetName: s.name, sheetMeta: s.meta, sheetSubject: s.subject, sheetPhone: s.phone,
+      sheetNext: s.next, sheetState: s.state, sheetNote: s.note,
+      archiveOpen: st.archive, askArchive: () => this.setState({ archive: true }),
+      cancelArchive: () => this.setState({ archive: false }),
+
+      notStarted: !st.started, started: st.started,
+      notes: st.notes, onNotes: (e) => this.setNotes(e.target.value),
+      noteStatus: !st.started ? '尚未建立紀錄' : (st.saving ? '儲存中…' : (st.savedAt ? '已自動儲存 ' + st.savedAt : '自動儲存已啟用')),
+      startRecord: () => this.setState({ started: true, notes: '力學：等加速度運動。學生能列出公式，但題目給圖時抓不到已知量。做了三題斜面題，第三題自己完成。' }),
+
+      aiIdle: st.ai === 'idle', aiLoading: st.ai === 'loading', aiError: st.ai === 'error',
+      aiEditable: st.ai === 'draft' || st.ai === 'manual' || st.ai === 'saved',
+      summaryChip: chip[0], summaryChipBg: chip[1], summaryChipFg: chip[2],
+      summaryHint: st.summarySaved ? '已存入這堂課的紀錄' : '儲存後才會成為課堂紀錄的一部分',
+      summaryFields: [this.field('overview', '整體概況'), this.field('progress', '學習進度'),
+        this.field('strengths', '表現優點'), this.field('difficulties', '遇到的困難'), this.field('next', '下一步建議')],
+      generate: () => {
+        this.setState({ ai: 'loading' });
+        setTimeout(() => {
+          if (this.props.aiOutcome === '失敗') { this.setState({ ai: 'error' }); return; }
+          this.setState({ ai: 'draft', summarySaved: false, s: {
+            overview: '本堂複習等加速度運動，聚焦在題目圖形與已知量的對應。',
+            progress: '完成三題斜面情境題，第三題能獨立列式並求解。',
+            strengths: '公式記憶完整，計算過程穩定，願意主動說明自己的想法。',
+            difficulties: '看到附圖題目時，較難判斷哪些數值屬於已知條件。',
+            next: '下週先做五分鐘讀圖練習，再進入牛頓第二定律的綜合題。' } });
+        }, 1100);
+      },
+      manualSummary: () => this.setState({ ai: 'manual', summarySaved: false }),
+      saveSummary: () => this.setState({ ai: 'saved', summarySaved: true }),
+
+      fbLocked: !st.summarySaved,
+      fbReady: st.summarySaved && st.fbState === 'idle',
+      fbDraft: st.summarySaved && st.fbState === 'draft',
+      fbStatusLabel: !st.summarySaved ? '需先儲存摘要' : (st.fbState === 'draft' ? '草稿 · 未送出' : '可產生草稿'),
+      fb: st.fb, onFb: (e) => this.setState({ fb: e.target.value, copied: false }),
+      generateFb: () => this.setState({ fbState: 'draft', copied: false, fb:
+        '柏睿媽媽您好：\n\n今天這堂課我們複習了等加速度運動，柏睿的公式與計算都很穩定，也願意主動說明自己的解題想法。目前比較需要練習的是「看圖找已知條件」，遇到附圖的題目時容易卡在第一步。\n\n下週上課我會先安排五分鐘的讀圖練習，再進入牛頓第二定律的綜合題。在家如果有時間，請他把課本例題的圖先圈出已知量即可，不需要另外做題。\n\n有任何問題都歡迎再與我聯絡。' }),
+      copyFb: () => { try { navigator.clipboard.writeText(st.fb); } catch (e) {} this.setState({ copied: true }); },
+      copiedLabel: st.copied ? '已複製到剪貼簿' : '',
+
+      exitOpen: st.exit,
+      tryExit: () => {
+        if ((st.ai === 'draft' || st.ai === 'manual') && !st.summarySaved) { this.setState({ exit: true }); return; }
+        this.setState({ page: 'today' });
+      },
+      keepEditing: () => this.setState({ exit: false }),
+      discardDraft: () => this.setState({ exit: false, page: 'today', ai: 'idle', s: { overview: '', progress: '', strengths: '', difficulties: '', next: '' } }),
+      saveDraftExit: () => this.setState({ exit: false, page: 'today', ai: 'saved', summarySaved: true })
+    };
+  }
+}
+</script>
+</body>
+</html>
