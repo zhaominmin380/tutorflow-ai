@@ -1,11 +1,13 @@
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -17,7 +19,32 @@ logger = logging.getLogger(__name__)
 
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=engine)
+    if os.getenv("DATABASE_SCHEMA_MANAGED_BY_ALEMBIC", "false").lower() != "true":
+        Base.metadata.create_all(bind=engine)
+
+
+def frontend_dist() -> Path | None:
+    configured_path = os.getenv("FRONTEND_DIST")
+    if not configured_path:
+        return None
+    directory = Path(configured_path).resolve()
+    return directory if directory.is_dir() else None
+
+
+def frontend_response(requested_path: str = ""):
+    directory = frontend_dist()
+    if directory is None:
+        if requested_path:
+            raise HTTPException(status_code=404, detail="Not found.")
+        return {"message": "TutorFlow API"}
+
+    if requested_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    requested_file = (directory / requested_path).resolve()
+    if requested_path and requested_file.is_relative_to(directory) and requested_file.is_file():
+        return FileResponse(requested_file)
+    return FileResponse(directory / "index.html")
 
 
 @asynccontextmanager
@@ -68,7 +95,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 def root():
-    return {"message": "TutorFlow API"}
+    return frontend_response()
 
 
 @app.get("/health")
@@ -81,3 +108,7 @@ def database_health(db: Session = db_dependency):
     db.execute(text("SELECT 1"))
     return {"status": "ok", "database": "connected"}
 
+
+@app.get("/{requested_path:path}", include_in_schema=False)
+def frontend(requested_path: str):
+    return frontend_response(requested_path)

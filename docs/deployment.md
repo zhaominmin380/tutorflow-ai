@@ -1,5 +1,66 @@
 # TutorFlow Deployment Notes
 
+## Railway MVP deployment
+
+TutorFlow deploys as one Railway web service plus Railway Postgres. The web service
+serves the React application and FastAPI from the same domain, so the browser keeps
+using its existing `/api/v1` requests without a CORS or API-base-URL configuration.
+
+### Deploy the web service
+
+1. Merge the release commit into the branch you intend to deploy, normally `master`.
+2. In Railway, create a project and add **PostgreSQL**. Keep its service name as
+   `Postgres` for the variable reference below.
+3. Add a service from this GitHub repository. Its root directory must be the
+   repository root, where `Dockerfile` and `railway.toml` live.
+4. In the web service's Variables tab, add the following values. Do not upload the
+   local `.env` file.
+
+   ```env
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
+   SECRET_KEY=<a newly generated random secret>
+   ALGORITHM=HS256
+   ACCESS_TOKEN_EXPIRE_MINUTES=30
+   AI_BASE_URL=https://api.openai.com/v1
+   AI_API_KEY=<a newly rotated OpenAI API key>
+   AI_MODEL=gpt-5.4-mini
+   AI_TIMEOUT_SECONDS=30
+   AI_MAX_RETRIES=2
+   AI_LOG_RETENTION_DAYS=90
+   AI_DATA_PROCESSING_CONSENT_CONFIRMED=false
+   ```
+
+   `DATABASE_URL` uses Railway's private Postgres connection. The application
+   normalizes Railway's standard PostgreSQL URL to the installed `psycopg` driver.
+   Change `AI_DATA_PROCESSING_CONSENT_CONFIRMED` to `true` only after the required
+   disclosure and consent have been obtained.
+5. Deploy. The Docker image builds the frontend, runs `alembic upgrade head`, and
+   then starts FastAPI on Railway's injected `PORT`. `railway.toml` makes
+   `/health/db` the deployment health check, so Railway only routes traffic after
+   the database is reachable.
+6. Generate a Railway domain and verify all three endpoints:
+
+   ```text
+   /
+   /health
+   /health/db
+   ```
+
+   Then register a test Tutor, create a Student, schedule a Lesson, and create a
+   Lesson record before inviting any real users.
+
+### Required launch operations
+
+- Rotate the local OpenAI key and JWT `SECRET_KEY` before setting Railway variables.
+  The existing `.env` is ignored by Git and must remain local.
+- Set a Railway usage hard limit of **US$20** for the pilot, with a lower soft alert.
+- Enable a Postgres backup/restore process before storing real Tutor data.
+- Add a second Railway service from this repository for daily AI-log retention.
+  Give it the same `DATABASE_URL` reference, set its Start Command to
+  `python -m app.maintenance`, do not generate a public domain, disable its health
+  check, and configure cron `0 19 * * *`. Railway evaluates cron in UTC, which is
+  03:00 Asia/Taipei on the following calendar day.
+
 ## Database Migration Gate
 
 The application startup creates missing tables for local development, but `Base.metadata.create_all()` does not upgrade existing tables. Run the migration before starting a deployment that contains database changes:

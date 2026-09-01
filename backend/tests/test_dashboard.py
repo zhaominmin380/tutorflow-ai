@@ -3,6 +3,8 @@ import sys
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -11,6 +13,7 @@ os.environ["SECRET_KEY"] = "test-secret-for-sprint-9"
 from app.database import SessionLocal
 from app.main import app
 from app.models import AILog, User
+from app.services.dashboard_service import DashboardService
 from fastapi.testclient import TestClient
 
 
@@ -183,8 +186,17 @@ class DashboardApiTest(unittest.TestCase):
 
         self.add_ai_logs(owner_email)
 
-        overview = self.client.get("/api/v1/dashboard", headers=headers)
-        overview_alias = self.client.get("/api/v1/dashboard/overview", headers=headers)
+        taipei = ZoneInfo("Asia/Taipei")
+        with patch.object(
+            DashboardService,
+            "_today_bounds",
+            return_value=(
+                datetime(2026, 8, 15, tzinfo=taipei),
+                datetime(2026, 8, 16, tzinfo=taipei),
+            ),
+        ):
+            overview = self.client.get("/api/v1/dashboard", headers=headers)
+            overview_alias = self.client.get("/api/v1/dashboard/overview", headers=headers)
         income = self.client.get("/api/v1/dashboard/income?month=2026-08", headers=headers)
         students = self.client.get("/api/v1/dashboard/students", headers=headers)
         lessons = self.client.get("/api/v1/dashboard/lessons?month=2026-08", headers=headers)

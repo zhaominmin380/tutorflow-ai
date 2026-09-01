@@ -7,7 +7,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app import models  # noqa: F401
-from app.database import Base
+from app.database import Base, normalize_database_url
 
 
 config = context.config
@@ -19,9 +19,11 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    return os.getenv(
-        "DATABASE_URL",
-        config.get_main_option("sqlalchemy.url"),
+    return normalize_database_url(
+        os.getenv(
+            "DATABASE_URL",
+            config.get_main_option("sqlalchemy.url"),
+        )
     )
 
 
