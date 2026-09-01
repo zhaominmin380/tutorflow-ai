@@ -1,0 +1,9 @@
+.git
+.env
+backend/.env
+backend/.venv
+node_modules
+frontend/tutorflow-ai/node_modules
+frontend/tutorflow-ai/dist
+**/__pycache__
+**/*.pyc
