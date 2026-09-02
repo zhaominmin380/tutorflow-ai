@@ -85,7 +85,6 @@ class OpenAICompatibleProvider:
         payload: dict[str, object] = {
             "model": self.model_name,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
         }
         if response_schema:
             payload["response_format"] = {
