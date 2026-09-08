@@ -1,5 +1,49 @@
 # TutorFlow Deployment Notes
 
+## Local development with Docker Compose
+
+Docker Compose is the reproducible local-development environment. It starts a
+Postgres database, a FastAPI service with backend reload enabled, and the Vite
+development server with frontend hot-module replacement. It is not the Railway
+deployment configuration.
+
+1. Install Docker Desktop (or Docker Engine with the Compose plugin).
+2. If you do not already have a local `.env`, copy the safe local defaults and
+   adjust them for your machine:
+
+   ```sh
+   cp .env.example .env
+   ```
+
+   When adapting an existing non-Docker `.env`, set `DATABASE_URL` to the
+   `postgres` service hostname as shown in `.env.example`, rather than
+   `localhost`.
+
+3. Start the complete local stack:
+
+   ```sh
+   docker compose up --build
+   ```
+
+Open the development UI at `http://localhost:5173`. The API and its Swagger UI
+are available at `http://localhost:8000` and `http://localhost:8000/docs`.
+The frontend proxies `/api` requests to the API container, so no browser API URL
+configuration is necessary.
+
+If one of the default host ports is already occupied, change `POSTGRES_PORT`,
+`API_PORT`, or `FRONTEND_PORT` in `.env`; the corresponding container ports stay
+at `5432`, `8000`, and `5173`.
+
+Source changes under `frontend/tutorflow-ai` and `backend` reload automatically.
+After changing backend dependencies or the root `Dockerfile`, rebuild the API
+image with `docker compose up --build api`. Compose persists database data in its
+`postgres_data` volume. Use `docker compose down -v` only when intentionally
+discarding all local database data.
+
+The local defaults are intentionally non-production values. Do not reuse the
+local `SECRET_KEY`, Postgres password, or `.env` file for Railway. Railway
+continues to use the root `Dockerfile` and `railway.toml` described below.
+
 ## Railway MVP deployment
 
 TutorFlow deploys as one Railway web service plus Railway Postgres. The web service
