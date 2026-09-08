@@ -256,9 +256,11 @@ class LessonNoteApiTest(unittest.TestCase):
             self.assertEqual(summary_version, "sprint-7-summary-v1")
             self.assertIn("Practiced equations.", summary_prompt)
             self.assertIn('"next_steps"', summary_prompt)
-            self.assertEqual(feedback_version, "sprint-7-feedback-v1")
+            self.assertEqual(feedback_version, "sprint-7-feedback-v2")
             self.assertIn("Keep feedback encouraging.", feedback_prompt)
             self.assertIn(SUMMARY["overview"], feedback_prompt)
+            self.assertIn("2–3 short paragraphs", feedback_prompt)
+            self.assertIn("180–300 Chinese characters", feedback_prompt)
         finally:
             db.close()
 
