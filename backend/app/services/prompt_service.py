@@ -7,7 +7,7 @@ from app.models import Lesson, Student
 
 class PromptService:
     summary_prompt_version = "sprint-7-summary-v1"
-    feedback_prompt_version = "sprint-7-feedback-v1"
+    feedback_prompt_version = "sprint-7-feedback-v2"
 
     def build_summary_prompt(self, lesson: Lesson, student: Student, raw_note: str) -> tuple[str, str]:
         prompt = f"""You are a teaching assistant. Create a factual lesson summary for a parent-facing tutoring system.
@@ -37,8 +37,9 @@ Return JSON only with this exact shape:
         teacher_note: str | None,
     ) -> tuple[str, str]:
         summary_json = json.dumps(ai_summary, ensure_ascii=True)
-        prompt = f"""Write concise, supportive parent feedback for a tutoring lesson.
+        prompt = f"""Write supportive parent feedback for a tutoring lesson in Chinese.
 Use only the provided lesson summary and teacher note. Do not invent facts.
+Write 2–3 short paragraphs, totaling roughly 180–300 Chinese characters.
 Student subject: {student.subject or "Not provided"}
 Lesson time: {lesson.start_time.isoformat()}
 Structured lesson summary: {summary_json}
