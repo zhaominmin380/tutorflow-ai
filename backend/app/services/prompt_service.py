@@ -37,8 +37,8 @@ Return JSON only with this exact shape:
         teacher_note: str | None,
     ) -> tuple[str, str]:
         summary_json = json.dumps(ai_summary, ensure_ascii=True)
-        prompt = f"""Write supportive parent feedback for a tutoring lesson in Chinese.
-Use only the provided lesson summary and teacher note. Do not invent facts.
+        prompt = f"""Write supportive parent feedback for a tutoring lesson in Chinese based on
+the provided lesson summary and teacher note.
 Write 2–3 short paragraphs, totaling roughly 180–300 Chinese characters.
 Student subject: {student.subject or "Not provided"}
 Lesson time: {lesson.start_time.isoformat()}
