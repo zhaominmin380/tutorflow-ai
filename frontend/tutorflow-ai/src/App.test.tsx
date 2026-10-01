@@ -33,7 +33,7 @@ describe('TutorFlow application', () => {
     await user.type(screen.getByLabelText('密碼'), 'password123')
     await user.click(screen.getByRole('button', { name: '登入' }))
     expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
-    expect(screen.findByRole('heading', { name: '先建立第一位學生' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '先建立第一位學生' })).toBeVisible()
     expect(api.login).toHaveBeenCalledWith({ email: tutor.email, password: 'password123', remember_me: true })
     expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
     expect(window.localStorage.length).toBe(0)
