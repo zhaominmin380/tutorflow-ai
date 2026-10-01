@@ -9,8 +9,8 @@ export interface Tutor {
 }
 
 export interface AuthResult {
-  access_token: string
-  token_type: string
+  csrf_token: string
+  expires_at: string
   user: Tutor
 }
 
@@ -117,8 +117,10 @@ export interface LessonQuery {
 }
 
 export interface TutorApi {
-  register(input: { name: string; email: string; password: string }): Promise<AuthResult>
-  login(input: { email: string; password: string }): Promise<AuthResult>
+  register(input: { name: string; email: string; password: string; remember_me: boolean }): Promise<AuthResult>
+  login(input: { email: string; password: string; remember_me: boolean }): Promise<AuthResult>
+  getSession(): Promise<AuthResult>
+  logout(): Promise<void>
   getDashboard(): Promise<DashboardOverview>
   listStudents(query?: StudentQuery): Promise<Paginated<Student>>
   getStudent(studentId: number): Promise<Student>
@@ -181,14 +183,18 @@ function queryString(values: object): string {
   return result ? `?${result}` : ''
 }
 
-export function createTutorApi(getToken: () => string | null): TutorApi {
+export function createTutorApi(): TutorApi {
+  let csrfToken: string | null = null
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = getToken()
+    const changesData = !['GET', 'HEAD', 'OPTIONS'].includes(init.method ?? 'GET')
     const response = await fetch(`/api/v1${path}`, {
       ...init,
+      credentials: 'same-origin',
+      cache: 'no-store',
       headers: {
+        'X-TutorFlow-Request': '1',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(changesData && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
         ...init.headers,
       },
     })
@@ -205,10 +211,20 @@ export function createTutorApi(getToken: () => string | null): TutorApi {
 
   const json = (body: object): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
   const patch = (body: object): RequestInit => ({ method: 'PATCH', body: JSON.stringify(body) })
+  async function authenticate(path: string, init?: RequestInit): Promise<AuthResult> {
+    const session = await request<AuthResult>(path, init)
+    csrfToken = session.csrf_token
+    return session
+  }
 
   return {
-    register: (input) => request<AuthResult>('/auth/register', json(input)),
-    login: (input) => request<AuthResult>('/auth/login', json(input)),
+    register: (input) => authenticate('/auth/session/register', json(input)),
+    login: (input) => authenticate('/auth/session', json(input)),
+    getSession: () => authenticate('/auth/session'),
+    logout: async () => {
+      await request<void>('/auth/session', { method: 'DELETE' })
+      csrfToken = null
+    },
     getDashboard: () => request<DashboardOverview>('/dashboard'),
     listStudents: (input = {}) => request<Paginated<Student>>(`/students${queryString(input)}`),
     getStudent: (studentId) => request<Student>(`/students/${studentId}`),

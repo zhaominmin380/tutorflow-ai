@@ -94,7 +94,35 @@ List response data:
 
 ## Auth
 
-TutorFlow AI uses JWT access tokens. Passwords are stored as bcrypt hashes and are never returned by the API.
+TutorFlow AI uses revocable cookie sessions for its browser frontend and JWT access tokens for API clients and Swagger. Passwords are stored as bcrypt hashes and are never returned by the API.
+
+### Browser sessions
+
+The frontend uses these same-origin endpoints instead of storing Bearer tokens:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| POST | `/api/v1/auth/session` | Sign in with `email`, `password`, and optional `remember_me` (default `true`). |
+| POST | `/api/v1/auth/session/register` | Register with `name`, `email`, `password`, and optional `remember_me`. |
+| GET | `/api/v1/auth/session` | Restore the current cookie session, or return `401`. |
+| DELETE | `/api/v1/auth/session` | Revoke the current device session, clear the cookie, and return `204`. |
+
+All browser-session endpoints require `X-TutorFlow-Request: 1`; cross-site browser
+requests are rejected. Sign-in, registration, and restoration return the standard
+success envelope with `data: { user, csrf_token, expires_at }`. The random session
+identifier is sent only in a host-only HttpOnly cookie; only its SHA-256 hash is
+stored in the database. Cookie-authenticated writes, including sign-out, require
+the returned token in `X-CSRF-Token`. The token is bound to that browser session.
+
+Remembered sessions have a fixed 30-day expiry and a persistent cookie. Activity
+does not renew the deadline. Opting out creates a non-persistent cookie with an
+eight-hour server-enforced limit. HTTPS production uses `Secure`, `HttpOnly`,
+`SameSite=Strict`, and the `__Host-` cookie prefix. Cookie sessions work on all
+protected domain APIs; Bearer headers remain supported and take precedence when
+present. Invalid or expired sessions return `401`; CSRF failures return `403`.
+API responses include `Cache-Control: no-store`.
+
+The JWT endpoints below retain their existing contract and configured expiry.
 
 JWT payload:
 
@@ -181,7 +209,7 @@ Invalid credentials return `401 Unauthorized`.
 
 ### GET `/auth/me`
 
-Return the current authenticated teacher. This endpoint requires a valid Bearer token.
+Return the current authenticated teacher. This endpoint requires a valid browser session or Bearer token.
 
 Authentication failure cases return `401 Unauthorized`:
 
@@ -192,11 +220,11 @@ Authentication failure cases return `401 Unauthorized`:
 
 ## Students
 
-All Student APIs require a valid Bearer token. Students are scoped to the authenticated user through `user_id`; requests for another user's student return `404 Not Found`.
+All Student APIs require a valid browser session or Bearer token. Students are scoped to the authenticated user through `user_id`; requests for another user's student return `404 Not Found`.
 
 ### GET `/students`
 
-Requires a valid Bearer token. Supports `page`, `page_size`, `sort`, `search`, `grade`, `subject`, `active`.
+Requires a valid browser session or Bearer token. Supports `page`, `page_size`, `sort`, `search`, `grade`, `subject`, `active`.
 
 Query examples:
 
@@ -288,7 +316,7 @@ Soft delete a student by setting `is_active=false`. Returns `204 No Content`.
 
 ### GET `/lessons`
 
-Requires a valid Bearer token and returns only the current user's lessons. Supports `page`, `page_size`, `sort`, `search`, `student_id`, `status`, `start_date`, and `end_date`.
+Requires a valid browser session or Bearer token and returns only the current user's lessons. Supports `page`, `page_size`, `sort`, `search`, `student_id`, `status`, `start_date`, and `end_date`.
 
 - `search` matches the student name, lesson location, or remark.
 - `start_date` and `end_date` use `YYYY-MM-DD` and form an inclusive date range.
@@ -326,13 +354,13 @@ Permanently delete a lesson and its related note/payment records through the con
 
 ### GET `/students/{student_id}/lessons`
 
-Requires a valid Bearer token. Lists lessons for one active student owned by the current user, with the same pagination, status, date-range, and sort options as `GET /lessons`.
+Requires a valid browser session or Bearer token. Lists lessons for one active student owned by the current user, with the same pagination, status, date-range, and sort options as `GET /lessons`.
 
 ## Lesson Notes
 
 ### POST `/lessons/{id}/note`
 
-Requires a valid Bearer token. Create the only Lesson Note for a lesson owned by the current user. `raw_note` is required and cannot be blank. A duplicate note returns `409 Conflict`.
+Requires a valid browser session or Bearer token. Create the only Lesson Note for a lesson owned by the current user. `raw_note` is required and cannot be blank. A duplicate note returns `409 Conflict`.
 
 Request:
 
@@ -364,7 +392,7 @@ Partially update `raw_note`, `ai_summary`, `teacher_note`, or `parent_feedback`.
 
 ## Payments
 
-All Payment APIs require a valid Bearer token. Payment ownership is derived from
+All Payment APIs require a valid browser session or Bearer token. Payment ownership is derived from
 `payment.lesson.student.user_id`; foreign resources return `404` instead of `403`.
 
 Payment statuses are `pending`, `paid`, `cancelled`, and the legacy `refunded`.
@@ -495,13 +523,13 @@ paid, and refunded payments are excluded.
 ```
 
 Payment errors use the unified error response. Typical statuses are `401` for
-JWT failures, `404` for missing or foreign resources, `409` for duplicates or
+authentication failures, `404` for missing or foreign resources, `409` for duplicates or
 invalid status transitions, and `422` for invalid amounts, notes, months, or
 sort values.
 
 ## Dashboard
 
-All Dashboard APIs require a valid Bearer token and only aggregate data owned by
+All Dashboard APIs require a valid browser session or Bearer token and only aggregate data owned by
 the authenticated tutor. Reporting uses the `Asia/Taipei` timezone. Monthly
 analytics use an inclusive start and exclusive end boundary for `month=YYYY-MM`.
 
@@ -581,7 +609,7 @@ AI Logs contain lesson prompts and provider responses. They are retained for `AI
 
 ### POST `/ai/summary`
 
-Requires a valid Bearer token. Generate a structured summary draft from an existing saved `raw_note`; the request does not update the Lesson Note. A missing Note or `raw_note` returns `409 Conflict`.
+Requires a valid browser session or Bearer token. Generate a structured summary draft from an existing saved `raw_note`; the request does not update the Lesson Note. A missing Note or `raw_note` returns `409 Conflict`.
 
 Request:
 
@@ -595,7 +623,7 @@ Provider timeout returns `504`; rate limits and unavailable configuration return
 
 ### POST `/ai/feedback`
 
-Requires a valid Bearer token. Generate a parent-feedback draft from an existing saved `ai_summary` and optional `teacher_note`; the request does not update the Lesson Note. A missing saved summary returns `409 Conflict`.
+Requires a valid browser session or Bearer token. Generate a parent-feedback draft from an existing saved `ai_summary` and optional `teacher_note`; the request does not update the Lesson Note. A missing saved summary returns `409 Conflict`.
 
 Request:
 

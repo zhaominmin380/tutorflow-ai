@@ -1,25 +1,26 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, type Lesson, type LessonNote, type LessonSummary, type Paginated, type Student, type TutorApi } from './api'
+import { ApiError, type AuthResult, type Lesson, type LessonNote, type LessonSummary, type Paginated, type Student, type TutorApi } from './api'
 import App from './App'
 
 const tutor = { id: 7, email: 'tutor@example.com', name: '許雅涵', created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
-const authResult = { access_token: 'session-token', token_type: 'bearer', user: tutor }
+const authResult = { csrf_token: 'csrf-token', expires_at: '2030-10-01T00:00:00Z', user: tutor }
+let restoredSession: AuthResult | null = null
 const student: Student = { id: 11, user_id: 7, name: '陳柏睿', school: '建國中學', grade: '高二', subject: '物理', hourly_rate: null, is_active: true, note: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
 const lesson: Lesson = { id: 31, student_id: 11, start_time: '2026-08-30T06:00:00Z', duration_minutes: 60, status: 'completed', location: '大安區', remark: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
 
 function paged<T>(items: T[]): Paginated<T> { return { items, pagination: { page: 1, page_size: 20, total: items.length, total_pages: 1 } } }
-function createApi(overrides: Partial<TutorApi> = {}): TutorApi { return { register: vi.fn(), login: vi.fn(), getDashboard: vi.fn(), listStudents: vi.fn(), getStudent: vi.fn(), createStudent: vi.fn(), updateStudent: vi.fn(), archiveStudent: vi.fn(), listLessons: vi.fn(), getLesson: vi.fn(), createLesson: vi.fn(), updateLesson: vi.fn(), getLessonNote: vi.fn(), createLessonNote: vi.fn(), updateLessonNote: vi.fn(), generateSummary: vi.fn(), generateFeedback: vi.fn(), ...overrides } }
-function setSession() { window.sessionStorage.setItem('tutorflow.session', JSON.stringify({ accessToken: authResult.access_token, user: tutor })) }
+function createApi(overrides: Partial<TutorApi> = {}): TutorApi { return { register: vi.fn(), login: vi.fn(), getSession: vi.fn().mockImplementation(() => restoredSession ? Promise.resolve(restoredSession) : Promise.reject(new ApiError(401, 'No session'))), logout: vi.fn().mockResolvedValue(undefined), getDashboard: vi.fn(), listStudents: vi.fn(), getStudent: vi.fn(), createStudent: vi.fn(), updateStudent: vi.fn(), archiveStudent: vi.fn(), listLessons: vi.fn(), getLesson: vi.fn(), createLesson: vi.fn(), updateLesson: vi.fn(), getLessonNote: vi.fn(), createLessonNote: vi.fn(), updateLessonNote: vi.fn(), generateSummary: vi.fn(), generateFeedback: vi.fn(), ...overrides } }
+function setSession() { restoredSession = authResult }
 
 describe('TutorFlow application', () => {
-  beforeEach(() => { window.sessionStorage.clear(); window.history.pushState({}, '', '/') })
+  beforeEach(() => { restoredSession = null; window.sessionStorage.clear(); window.localStorage.clear(); window.history.pushState({}, '', '/') })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-  it('shows sign in before a Tutor has a session', () => {
+  it('shows sign in before a Tutor has a session', async () => {
     render(<App api={createApi()} />)
-    expect(screen.getByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
     expect(screen.getByRole('button', { name: '登入' })).toBeVisible()
     expect(screen.getByRole('tab', { name: '建立帳號' })).toBeVisible()
   })
@@ -28,13 +29,14 @@ describe('TutorFlow application', () => {
     const user = userEvent.setup()
     const api = createApi({ login: vi.fn().mockResolvedValue(authResult), getDashboard: vi.fn().mockResolvedValue({ date: '2026-08-30', month: '2026-08', today_lessons_count: 0, active_students_count: 0 }), listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])) })
     render(<App api={api} />)
-    await user.type(screen.getByLabelText('電子信箱'), tutor.email)
+    await user.type(await screen.findByLabelText('電子信箱'), tutor.email)
     await user.type(screen.getByLabelText('密碼'), 'password123')
     await user.click(screen.getByRole('button', { name: '登入' }))
     expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
-    expect(screen.getByRole('heading', { name: '先建立第一位學生' })).toBeVisible()
-    expect(api.login).toHaveBeenCalledWith({ email: tutor.email, password: 'password123' })
-    expect(window.sessionStorage.getItem('tutorflow.session')).toContain('session-token')
+    expect(await screen.findByRole('heading', { name: '先建立第一位學生' })).toBeVisible()
+    expect(api.login).toHaveBeenCalledWith({ email: tutor.email, password: 'password123', remember_me: true })
+    expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
+    expect(window.localStorage.length).toBe(0)
   })
 
   it('returns the Tutor to sign in without rendering the logout click event', async () => {
@@ -46,6 +48,7 @@ describe('TutorFlow application', () => {
     await user.click(await screen.findByRole('button', { name: '登出' }))
 
     expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
+    expect(api.logout).toHaveBeenCalledOnce()
     expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
   })
 
@@ -213,7 +216,7 @@ describe('TutorFlow application', () => {
     })
     render(<App api={api} />)
 
-    await user.type(screen.getByLabelText('電子信箱'), tutor.email)
+    await user.type(await screen.findByLabelText('電子信箱'), tutor.email)
     await user.type(screen.getByLabelText('密碼'), 'password123')
     await user.click(screen.getByRole('button', { name: '登入' }))
     expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
@@ -491,5 +494,104 @@ describe('TutorFlow application', () => {
     expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('工作階段已結束，請重新登入。')
     expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
+  })
+
+  it('restores the protected route after reopening without browser storage', async () => {
+    setSession(); window.history.pushState({}, '', '/students')
+    const api = createApi({ listStudents: vi.fn().mockResolvedValue(paged([student])) })
+    const first = render(<App api={api} />)
+    expect(await screen.findByRole('heading', { name: '學生' })).toBeVisible()
+    first.unmount()
+    window.sessionStorage.clear()
+    render(<App api={api} />)
+    expect(await screen.findByRole('heading', { name: '學生' })).toBeVisible()
+    expect(api.getSession).toHaveBeenCalledTimes(2)
+    expect(window.sessionStorage.length).toBe(0)
+    expect(window.localStorage.length).toBe(0)
+  })
+
+  it('retries a connection failure without treating it as expired login', async () => {
+    const user = userEvent.setup()
+    const api = createApi({
+      getSession: vi.fn().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(authResult),
+      getDashboard: vi.fn().mockResolvedValue({ date: '2026-10-01', month: '2026-10', today_lessons_count: 0, active_students_count: 0 }),
+      listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])),
+    })
+    render(<App api={api} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法確認登入狀態')
+    expect(screen.queryByLabelText('密碼')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重試' }))
+    expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
+  })
+
+  it('rejects an expired restored session and discards the previous stored JWT', async () => {
+    window.sessionStorage.setItem('tutorflow.session', JSON.stringify({ accessToken: 'old-jwt', user: tutor }))
+    const api = createApi({ getSession: vi.fn().mockRejectedValue(new ApiError(401, 'expired')) })
+    render(<App api={api} />)
+    expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
+    expect(window.sessionStorage.getItem('tutorflow.session')).toBeNull()
+    expect(api.getDashboard).not.toHaveBeenCalled()
+  })
+
+  it('allows a Tutor to opt out of monthly login on a shared device', async () => {
+    const user = userEvent.setup()
+    const api = createApi({
+      login: vi.fn().mockResolvedValue(authResult),
+      getDashboard: vi.fn().mockResolvedValue({ date: '2026-10-01', month: '2026-10', today_lessons_count: 0, active_students_count: 0 }),
+      listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])),
+    })
+    render(<App api={api} />)
+    const remember = await screen.findByRole('checkbox', { name: '在此裝置保持登入 30 天' })
+    expect(remember).toBeChecked()
+    await user.click(remember)
+    await user.type(screen.getByLabelText('電子信箱'), tutor.email)
+    await user.type(screen.getByLabelText('密碼'), 'password123')
+    await user.click(screen.getByRole('button', { name: '登入' }))
+    expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
+    expect(api.login).toHaveBeenCalledWith({ email: tutor.email, password: 'password123', remember_me: false })
+  })
+
+  it('exposes sign out on mobile and retries failed server revocation', async () => {
+    setSession()
+    const user = userEvent.setup()
+    const api = createApi({
+      logout: vi.fn().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(undefined),
+      getDashboard: vi.fn().mockResolvedValue({ date: '2026-10-01', month: '2026-10', today_lessons_count: 0, active_students_count: 0 }),
+      listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])),
+    })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '登出（行動版）' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('登出未完成')
+    expect(screen.queryByLabelText('密碼')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重試' }))
+    expect(await screen.findByRole('heading', { name: '今天也準備好了。' })).toBeVisible()
+    expect(api.logout).toHaveBeenCalledTimes(2)
+    expect(window.location.pathname).toBe('/')
+  })
+
+  it('preserves the draft-exit safeguard before signing out of a lesson record', async () => {
+    setSession(); window.history.pushState({}, '', '/lessons/31/record')
+    const user = userEvent.setup()
+    const savedNote: LessonNote = { id: 1, lesson_id: 31, raw_note: 'Saved raw note', ai_summary: null, teacher_note: null, parent_feedback: null, created_at: '2026-08-30T00:00:00Z', updated_at: '2026-08-30T00:00:00Z' }
+    const api = createApi({ getLesson: vi.fn().mockResolvedValue(lesson), getStudent: vi.fn().mockResolvedValue(student), getLessonNote: vi.fn().mockResolvedValue(savedNote) })
+    render(<App api={api} />)
+    await user.click(await screen.findByRole('button', { name: '自行撰寫' }))
+    await user.type(screen.getByLabelText('摘要概覽'), '尚未儲存的摘要')
+    await user.click(screen.getByRole('button', { name: '登出（行動版）' }))
+    expect(await screen.findByRole('heading', { name: '離開未儲存的草稿？' })).toBeVisible()
+    expect(api.logout).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: '繼續編輯' }))
+    expect(screen.getByLabelText('摘要概覽')).toHaveValue('尚未儲存的摘要')
+  })
+
+  it('does not sign out merely by visiting a sign-out URL', async () => {
+    setSession(); window.history.pushState({}, '', '/sign-out')
+    const api = createApi({
+      getDashboard: vi.fn().mockResolvedValue({ date: '2026-10-01', month: '2026-10', today_lessons_count: 0, active_students_count: 0 }),
+      listLessons: vi.fn().mockResolvedValue(paged([])), listStudents: vi.fn().mockResolvedValue(paged([])),
+    })
+    render(<App api={api} />)
+    expect(await screen.findByRole('heading', { name: '今日' })).toBeVisible()
+    expect(api.logout).not.toHaveBeenCalled()
   })
 })

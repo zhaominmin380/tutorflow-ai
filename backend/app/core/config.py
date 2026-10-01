@@ -13,6 +13,13 @@ class AuthSettings:
     secret_key: str | None = os.getenv("SECRET_KEY")
     algorithm: str = os.getenv("ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    session_expire_days: int = int(os.getenv("SESSION_EXPIRE_DAYS", "30"))
+    session_expire_hours: int = int(os.getenv("SESSION_EXPIRE_HOURS", "8"))
+    session_cookie_secure: bool = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
+
+    @property
+    def session_cookie_name(self) -> str:
+        return "__Host-tutorflow_session" if self.session_cookie_secure else "tutorflow_session"
 
     def require_secret_key(self) -> str:
         if not self.secret_key:
