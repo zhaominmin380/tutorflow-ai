@@ -29,23 +29,14 @@ import {
 import leafMark from './assets/leaf.svg'
 import './App.css'
 
-const SESSION_KEY = 'tutorflow.session'
 const RAW_NOTE_RECOVERY_KEY = 'tutorflow.raw-note-recovery'
 const EMPTY_RECORD_VALUE = '開始記錄'
 const STATUS_LABEL: Record<LessonStatus, string> = { scheduled: '已排定', completed: '已完成', cancelled: '已取消', no_show: '未到' }
 
-interface Session { accessToken: string; user: AuthResult['user'] }
+type Session = AuthResult
 interface RawNoteRecovery { tutorId: number; lessonId: number; rawNote: string }
 interface AppProps { api?: TutorApi }
 
-function loadSession(): Session | null {
-  try { const raw = window.sessionStorage.getItem(SESSION_KEY); return raw ? (JSON.parse(raw) as Session) : null } catch { return null }
-}
-function saveSession(result: AuthResult): Session {
-  const session = { accessToken: result.access_token, user: result.user }
-  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
-  return session
-}
 function loadRawNoteRecovery(): RawNoteRecovery | null {
   try { const raw = window.sessionStorage.getItem(RAW_NOTE_RECOVERY_KEY); return raw ? (JSON.parse(raw) as RawNoteRecovery) : null } catch { return null }
 }
@@ -113,33 +104,71 @@ export default function App({ api }: AppProps) {
 }
 
 function TutorFlowApp({ api }: AppProps) {
-  const [session, setSession] = useState<Session | null>(loadSession)
+  const [session, setSession] = useState<Session | null>(null)
+  const [restoring, setRestoring] = useState(true)
+  const [restoreError, setRestoreError] = useState<string | null>(null)
+  const [restoreAttempt, setRestoreAttempt] = useState(0)
   const [sessionNotice, setSessionNotice] = useState<string | null>(null)
-  const defaultApi = useMemo(() => createTutorApi(() => session?.accessToken ?? null), [session?.accessToken])
+  const defaultApi = useMemo(() => createTutorApi(), [])
   const client = api ?? defaultApi
-  const logout = useCallback((notice?: string) => { window.sessionStorage.removeItem(SESSION_KEY); setSessionNotice(notice ?? null); setSession(null) }, [])
-  const handleApiError = useCallback((error: unknown) => { if (isApiError(error, 401)) { logout('工作階段已結束，請重新登入。'); return true }; return false }, [logout])
-  if (!session) return <AuthPage api={client} notice={sessionNotice} onAuthenticated={(result) => { setSessionNotice(null); setSession(saveSession(result)) }} />
-  return <AppShell session={session} onLogout={logout}><Routes><Route path="/" element={<TodayPage api={client} onApiError={handleApiError} />} /><Route path="/students" element={<StudentsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons" element={<LessonsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons/:lessonId/record" element={<LessonRecordPage api={client} onApiError={handleApiError} tutorId={session.user.id} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></AppShell>
+  const navigate = useNavigate()
+  useEffect(() => {
+    let cancelled = false
+    // Discard the old JavaScript-readable JWT. Browser sessions now live in an HttpOnly cookie.
+    try { window.sessionStorage.removeItem('tutorflow.session') } catch { /* Storage may be unavailable. */ }
+    void client.getSession().then((result) => {
+      if (!cancelled) setSession(result)
+    }).catch((error: unknown) => {
+      if (!cancelled && !isApiError(error, 401)) setRestoreError('目前無法確認登入狀態，請檢查連線後重試。')
+    }).finally(() => { if (!cancelled) setRestoring(false) })
+    return () => { cancelled = true }
+  }, [client, restoreAttempt])
+  const clearSession = useCallback((notice?: string) => { setSessionNotice(notice ?? null); setSession(null) }, [])
+  const logout = useCallback(async () => {
+    await client.logout()
+    clearRawNoteRecovery()
+    clearSession()
+    navigate('/', { replace: true })
+  }, [client, clearSession, navigate])
+  const handleApiError = useCallback((error: unknown) => { if (isApiError(error, 401)) { clearSession('工作階段已結束，請重新登入。'); return true }; return false }, [clearSession])
+  if (restoring || restoreError) return <main className="auth-page"><section className="auth-card"><BrandMark className="auth-brand" />{restoring ? <LoadingCard label="確認登入狀態…" /> : <ErrorCard message={restoreError!} onRetry={() => { setRestoreError(null); setRestoring(true); setRestoreAttempt((attempt) => attempt + 1) }} />}</section></main>
+  if (!session) return <AuthPage api={client} notice={sessionNotice} onAuthenticated={(result) => { setSessionNotice(null); setSession(result); if (window.location.pathname === '/sign-out') navigate('/', { replace: true }) }} />
+  return <AppShell session={session}><Routes><Route path="/" element={<TodayPage api={client} onApiError={handleApiError} />} /><Route path="/students" element={<StudentsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons" element={<LessonsPage api={client} onApiError={handleApiError} />} /><Route path="/lessons/:lessonId/record" element={<LessonRecordPage api={client} onApiError={handleApiError} tutorId={session.user.id} />} /><Route path="/sign-out" element={<SignOutPage onLogout={logout} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></AppShell>
+}
+
+function SignOutPage({ onLogout }: { onLogout: () => Promise<void> }) {
+  const location = useLocation()
+  const requested = location.state?.signOutRequested === true
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    if (!requested) return
+    const timer = window.setTimeout(() => { void onLogout().catch(() => setError('登出未完成，請檢查連線後重試。')) }, 0)
+    return () => window.clearTimeout(timer)
+  }, [onLogout, attempt, requested])
+  if (!requested) return <Navigate to="/" replace />
+  return error ? <ErrorCard message={error} onRetry={() => { setError(null); setAttempt((value) => value + 1) }} /> : <LoadingCard label="登出中…" />
 }
 
 function AuthPage({ api, notice, onAuthenticated }: { api: TutorApi; notice: string | null; onAuthenticated: (result: AuthResult) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null); const [pending, setPending] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setPending(true); setError(null)
-    try { const result = mode === 'login' ? await api.login({ email, password }) : await api.register({ name, email, password }); onAuthenticated(result) }
+    try { const result = mode === 'login' ? await api.login({ email, password, remember_me: rememberMe }) : await api.register({ name, email, password, remember_me: rememberMe }); onAuthenticated(result) }
     catch (requestError) { setError(errorMessage(requestError, mode === 'login' ? '帳號或密碼不正確。' : '無法建立帳號，請再試一次。')) }
     finally { setPending(false) }
   }
-  return <main className="auth-page"><section className="auth-card" aria-labelledby="auth-title"><BrandMark className="auth-brand" /><div className="auth-copy"><p className="eyebrow">TODAY-FIRST WORKSPACE</p><h1 id="auth-title">{mode === 'login' ? '今天也準備好了。' : '建立你的教學工作區。'}</h1><p>{mode === 'login' ? '登入後繼續你的教學工作。' : '用最少的步驟開始你的教學工作。'}</p></div><div className="auth-tabs" role="tablist" aria-label="帳號操作"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')} role="tab" aria-selected={mode === 'login'}><img className="auth-tab-leaf" src={leafMark} alt="" />登入</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')} role="tab" aria-selected={mode === 'register'}><span className="auth-tab-person" aria-hidden="true" />建立帳號</button></div><form className="form-stack auth-form" onSubmit={submit} noValidate>{notice && <p className="error-text" role="alert">{notice}</p>}{mode === 'register' && <label>姓名<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="請輸入姓名" required /></label>}<label>電子信箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="請輸入電子信箱" required /></label><label>密碼<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="請輸入密碼" minLength={8} required /></label>{error && <p className="error-text" role="alert">{error}</p>}<button className="button button-primary" type="submit" disabled={pending}>{pending ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form></section></main>
+  return <main className="auth-page"><section className="auth-card" aria-labelledby="auth-title"><BrandMark className="auth-brand" /><div className="auth-copy"><p className="eyebrow">TODAY-FIRST WORKSPACE</p><h1 id="auth-title">{mode === 'login' ? '今天也準備好了。' : '建立你的教學工作區。'}</h1><p>{mode === 'login' ? '登入後繼續你的教學工作。' : '用最少的步驟開始你的教學工作。'}</p></div><div className="auth-tabs" role="tablist" aria-label="帳號操作"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')} role="tab" aria-selected={mode === 'login'}><img className="auth-tab-leaf" src={leafMark} alt="" />登入</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')} role="tab" aria-selected={mode === 'register'}><span className="auth-tab-person" aria-hidden="true" />建立帳號</button></div><form className="form-stack auth-form" onSubmit={submit} noValidate>{notice && <p className="error-text" role="alert">{notice}</p>}{mode === 'register' && <label>姓名<input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="請輸入姓名" required /></label>}<label>電子信箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="請輸入電子信箱" required /></label><label>密碼<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="請輸入密碼" minLength={8} required /></label><label className="remember-login"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />在此裝置保持登入 30 天</label><p className="auth-session-help">共用裝置請取消勾選。</p>{error && <p className="error-text" role="alert">{error}</p>}<button className="button button-primary" type="submit" disabled={pending}>{pending ? '處理中…' : mode === 'login' ? '登入' : '建立帳號'}</button></form></section></main>
 }
 
-function AppShell({ session, onLogout, children }: { session: Session; onLogout: () => void; children: ReactNode }) {
+function AppShell({ session, children }: { session: Session; children: ReactNode }) {
+  const navigate = useNavigate()
   const navigation = [{ to: '/', label: '今日', end: true }, { to: '/students', label: '學生' }, { to: '/lessons', label: '課程' }]
   const initial = session.user.name.trim().slice(0, 1) || '教'
-  return <div className="app-shell flex min-h-screen"><aside className="sidebar sticky top-0 flex h-screen flex-col"><BrandMark className="brand-lockup" /><nav className="primary-nav" aria-label="主要導覽">{navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><span aria-hidden="true" />{item.label}</NavLink>)}</nav><div className="sidebar-user"><span className="avatar" aria-hidden="true">{initial}</span><div><strong>{session.user.name}</strong><small>個人教師</small></div><button type="button" className="text-button" onClick={() => onLogout()}>登出</button></div></aside><main className="workspace min-w-0 flex-1">{children}</main><nav className="mobile-nav" aria-label="主要導覽">{navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>{item.label}</NavLink>)}</nav></div>
+  return <div className="app-shell flex min-h-screen"><aside className="sidebar sticky top-0 flex h-screen flex-col"><BrandMark className="brand-lockup" /><nav className="primary-nav" aria-label="主要導覽">{navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><span aria-hidden="true" />{item.label}</NavLink>)}</nav><div className="sidebar-user"><span className="avatar" aria-hidden="true">{initial}</span><div><strong>{session.user.name}</strong><small>個人教師</small></div><button type="button" className="text-button" onClick={() => navigate('/sign-out', { state: { signOutRequested: true } })}>登出</button></div></aside><main className="workspace min-w-0 flex-1"><div className="mobile-account"><strong>{session.user.name}</strong><button type="button" className="text-button" aria-label="登出（行動版）" onClick={() => navigate('/sign-out', { state: { signOutRequested: true } })}>登出</button></div>{children}</main><nav className="mobile-nav" aria-label="主要導覽">{navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>{item.label}</NavLink>)}</nav></div>
 }
 function PageHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: ReactNode }) { return <header className="page-header flex items-end justify-between"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{action}</header> }
 function StatusChip({ status }: { status: LessonStatus | 'active' | 'inactive' | 'draft' | 'saved' }) { const labels: Record<string, string> = { ...STATUS_LABEL, active: '在學', inactive: '已封存', draft: '草稿未儲存', saved: '已儲存' }; return <span className={`status-chip status-${status}`}>{labels[status]}</span> }

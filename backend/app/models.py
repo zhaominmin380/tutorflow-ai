@@ -65,6 +65,22 @@ class User(TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    browser_sessions: Mapped[list[BrowserSession]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class BrowserSession(Base):
+    __tablename__ = "browser_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="browser_sessions")
 
 
 class Student(TimestampMixin, Base):

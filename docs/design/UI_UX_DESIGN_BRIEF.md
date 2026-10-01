@@ -54,7 +54,7 @@ Use persistent desktop navigation and a compact mobile navigation. The required 
 | Analytics | Review monthly income, lesson, student, and AI usage | Analytics; it may be a Dashboard subpage |
 | Account | Show the signed-in tutor’s name/email and sign out locally | Profile / account menu |
 
-The backend does not provide a profile-edit endpoint or a server-side logout endpoint. The account area should therefore show identity and offer **Sign out**, which clears the client-held token; do not design profile editing as a working MVP flow.
+The backend does not provide a profile-edit endpoint. The account area shows identity and offers **Sign out** on desktop and mobile. Sign out revokes the current browser session on the server and clears its cookie; failed requests offer retry. Do not design profile editing as a working MVP flow.
 
 ### Global shell
 
@@ -82,7 +82,7 @@ Actions:
 - **Sign in** — enabled only when both fields are present.
 - Link to **Create an account**.
 
-Show an inline, non-revealing credential error for a `401` response (for example, “Email or password is incorrect.”). Do not reveal whether an email is registered. A valid sign-in returns a token and the tutor’s name/email; route to Dashboard.
+Show an inline, non-revealing credential error for a `401` response (for example, “Email or password is incorrect.”). Do not reveal whether an email is registered. A valid browser sign-in sets a secure session cookie and returns the Tutor’s identity; route to Dashboard.
 
 #### Create account
 
@@ -98,7 +98,7 @@ On duplicate email (`409`), show an inline error beside email and preserve the e
 
 #### Authentication recovery
 
-Any protected API call can return `401` when the token is absent, invalid, expired, or its user is gone. Clear the local session and route to Sign in, with one understandable message such as “Your session has ended. Please sign in again.”
+Any protected API call can return `401` when the browser session is absent, invalid, expired, or its Tutor is gone. Clear the in-memory identity and route to Sign in, with one understandable message such as “Your session has ended. Please sign in again.” On app startup, restore the cookie session before showing Sign in. Connectivity errors offer retry and do not imply expired login.
 
 There is no password reset or email verification flow in the backend; leave them out of MVP designs.
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.user import UserResponse
@@ -25,3 +27,17 @@ class AuthTokenResponse(BaseModel):
 class OAuthTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class BrowserLoginRequest(LoginRequest):
+    remember_me: bool = True
+
+
+class BrowserRegisterRequest(RegisterRequest):
+    remember_me: bool = True
+
+
+class BrowserSessionResponse(BaseModel):
+    user: UserResponse
+    csrf_token: str
+    expires_at: datetime

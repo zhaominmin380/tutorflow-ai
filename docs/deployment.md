@@ -65,6 +65,9 @@ using its existing `/api/v1` requests without a CORS or API-base-URL configurati
    SECRET_KEY=<a newly generated random secret>
    ALGORITHM=HS256
    ACCESS_TOKEN_EXPIRE_MINUTES=30
+   SESSION_EXPIRE_DAYS=30
+   SESSION_EXPIRE_HOURS=8
+   SESSION_COOKIE_SECURE=true
    AI_BASE_URL=https://api.openai.com/v1
    AI_API_KEY=<a newly rotated OpenAI API key>
    AI_MODEL=gpt-5.4-mini
@@ -115,7 +118,34 @@ alembic upgrade head
 alembic current
 ```
 
-The command must use the same `DATABASE_URL` as the application. For the current Sprint 8 release, the target revision is `20260811_0003`. The API should not receive production traffic until the migration succeeds.
+The command must use the same `DATABASE_URL` as the application. The persistent-login release requires revision `20261001_0004`, which adds `browser_sessions`. The API should not receive production traffic until the migration succeeds.
+
+## Persistent browser login
+
+The browser uses a server-managed session rather than storing JWTs in web storage.
+The checked-by-default keep-signed-in option creates a persistent HttpOnly cookie
+with a fixed 30-day expiry. Activity does not extend that deadline. Opting out
+creates a non-persistent browser cookie with an enforced eight-hour server limit.
+Browser restore behavior can retain non-persistent cookies, so the server limit
+is authoritative in both modes.
+
+Production must serve HTTPS and keep `SESSION_COOKIE_SECURE=true` (the application
+default). This uses the host-only `__Host-tutorflow_session` cookie with `Secure`,
+`HttpOnly`, `SameSite=Strict`, and `Path=/`. Docker development explicitly uses
+`SESSION_COOKIE_SECURE=false` and the `tutorflow_session` cookie for HTTP localhost.
+For direct local backend runs over HTTP, set the same variable in the local environment.
+
+Deploy the database migration before serving the updated frontend. Existing
+browser JWT sessions require signing in once after this release. The legacy
+Bearer login endpoints and their 30-minute expiry still work for API clients and
+Swagger. Each browser session is stored as a token hash and can be revoked independently;
+sign-out deletes its database record and clears its cookie. Expired records are
+purged when a new browser session is created. API responses are not cacheable.
+
+Verify on the deployed HTTPS domain: sign in, close and reopen the browser, open
+a protected deep link, perform a save, and sign out from desktop and mobile. A
+connection failure during restore or sign-out should offer retry. Use a separate
+test environment with shortened session lifetimes to verify server-side expiry.
 
 ## AI Provider Consent
 
